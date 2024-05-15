@@ -4,15 +4,18 @@
     "version": "1.0",
     "description": "Translate text from clipboard using Flask server.",
     "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "storage", "tabs", "offscreen"],
+    "host_permissions": [
+        "<all_urls>"
+    ],
     "background": {
         "service_worker": "background.js"
     },
     "content_scripts": [
         {
-          "matches": ["<all_urls>"],
-          "js": ["contentScript.js"]
+            "matches": ["<all_urls>"],
+            "js": ["contentScript.js"]
         }
-      ],    
+    ],    
     "commands": {
         "translate-clipboard": {
             "suggested_key": {
