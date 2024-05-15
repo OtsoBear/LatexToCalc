@@ -20,10 +20,10 @@
       "commands": {
         "translate-clipboard": {
           "suggested_key": {
-            "windows": "Ctrl+Shift+Y",
-            "mac": "Command+Shift+Y",
-            "chromeos": "Ctrl+Shift+U",
-            "linux": "Ctrl+Shift+J"
+            "windows": "Ctrl+Shift+Z",
+            "mac": "Command+Shift+Z",
+            "chromeos": "Ctrl+Shift+Z",
+            "linux": "Ctrl+Shift+Z"
           },
           "description": "Translate text from clipboard"
         }
