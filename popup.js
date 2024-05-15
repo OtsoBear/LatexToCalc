@@ -1,1 +1,1 @@
-// Optional: Add any interactive behavior for the popup UI
+// popup.js is empty

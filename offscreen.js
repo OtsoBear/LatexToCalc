@@ -1,25 +1,29 @@
+//offscreen.js
+
+console.log("Offscreen script loaded.");
+
 // Once the message has been posted from the service worker, checks are made to
 // confirm the message type and target before proceeding. This is so that the
 // module can easily be adapted into existing workflows where secondary uses for
 // the document (or alternate offscreen documents) might be implemented.
-
-// Registering this listener when the script is first executed ensures that the
-// offscreen document will be able to receive messages when the promise returned
-// by `offscreen.createDocument()` resolves.
 chrome.runtime.onMessage.addListener(handleMessages);
 
 // This function performs basic filtering and error checking on messages before
 // dispatching the
 // message to a more specific message handler.
 async function handleMessages(message) {
+  console.log("Received message:", message);
+
   // Return early if this message isn't meant for the offscreen document.
   if (message.target !== 'offscreen-doc') {
+    console.log("Message not intended for offscreen document.");
     return;
   }
 
   // Dispatch the message to an appropriate handler.
   switch (message.type) {
     case 'copy-data-to-clipboard':
+      console.log("Copying data to clipboard:", message.data);
       handleClipboardWrite(message.data);
       break;
     default:
@@ -42,6 +46,7 @@ async function handleClipboardWrite(data) {
   try {
     // Error if we received the wrong kind of data.
     if (typeof data !== 'string') {
+      console.error("Value provided must be a 'string', got:", typeof data);
       throw new TypeError(
         `Value provided must be a 'string', got '${typeof data}'.`
       );
@@ -53,8 +58,10 @@ async function handleClipboardWrite(data) {
     textEl.value = data;
     textEl.select();
     document.execCommand('copy');
+    console.log("Data copied to clipboard:", data);
   } finally {
     // Job's done! Close the offscreen document.
+    console.log("Closing offscreen document.");
     window.close();
   }
 }

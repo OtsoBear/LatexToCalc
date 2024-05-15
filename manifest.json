@@ -3,7 +3,7 @@
     "name": "Clipboard Translator",
     "version": "1.0",
     "description": "Translate text from clipboard using Flask server.",
-    "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "storage", "tabs", "offscreen"],
+    "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "storage", "tabs", "offscreen", "commands"],
     "host_permissions": [
         "<all_urls>"
     ],
@@ -13,25 +13,32 @@
     "content_scripts": [
         {
             "matches": ["<all_urls>"],
-            "js": ["contentScript.js"]
+            "js": ["contentScript.js"],
+            "run_at": "document_idle"
         }
-    ],    
-    "commands": {
+      ],
+      "commands": {
         "translate-clipboard": {
-            "suggested_key": {
-                "windows": "Ctrl+Shift+Y",
-                "mac": "Command+Shift+Y",
-                "chromeos": "Ctrl+Shift+U",
-                "linux": "Ctrl+Shift+J"
-            },
-            "description": "Translate text from clipboard"
+          "suggested_key": {
+            "windows": "Ctrl+Shift+Y",
+            "mac": "Command+Shift+Y",
+            "chromeos": "Ctrl+Shift+U",
+            "linux": "Ctrl+Shift+J"
+          },
+          "description": "Translate text from clipboard"
         }
-    },
-    "icons": {
+      },
+      "icons": {
         "48": "icon.png"
-    },
-    "action": {
+      },
+      "action": {
         "default_popup": "popup.html",
         "default_icon": "icon.png"
+      },
+      "web_accessible_resources": [
+        {
+          "resources": ["offscreen.js"],
+          "matches": ["<all_urls>"]
+        }
+      ]
     }
-}

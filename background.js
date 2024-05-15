@@ -1,26 +1,36 @@
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
-        const activeTab = await chrome.tabs.query({ active: true, currentWindow: true });
-        chrome.scripting.executeScript({
-            target: { tabId: activeTab[0].id },
-            function: () => {
-                const selectedText = window.getSelection().toString();
-                chrome.runtime.sendMessage({ type: "GET_SELECTED_TEXT", selectedText: selectedText });
-            }
-        });
+        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const activeTab = activeTabs[0];
+        if (activeTab) {
+            chrome.scripting.executeScript({
+                target: { tabId: activeTab.id },
+                function: async () => {
+                    try {
+                        const textFromClipboard = await navigator.clipboard.readText();
+                        chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromClipboard });
+                    } catch (error) {
+                        console.error('Error reading from clipboard:', error);
+                    }
+                }
+            });
+        } else {
+            console.error('No active tab found.');
+        }
     }
 });
 
+
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    if (request.type === "GET_SELECTED_TEXT") {
-        const selectedText = request.selectedText;
-        console.log("Selected text:", selectedText);
+    if (request.type === "GET_CLIPBOARD_TEXT") {
+        const clipboardText = request.clipboardText;
+        console.log("Clipboard text:", clipboardText);
         fetch('https://otsoveistera.xyz/translate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ expression: selectedText })
+            body: JSON.stringify({ expression: clipboardText })
         })
         .then(response => response.json())
         .then(data => {
