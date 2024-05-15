@@ -15,7 +15,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.type === "GET_SELECTED_TEXT") {
         const selectedText = request.selectedText;
         console.log("Selected text:", selectedText);
-        fetch('http://129.151.192.203:5002/translate', {
+        fetch('https://otsoveistera.xyz/translate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
