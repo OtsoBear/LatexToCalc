@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "LatexToCalc",
-    "version": "1.0",
+    "version": "1.0.1",
     "description": "Translate LaTeX text from clipboard using Flask server.",
     "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "offscreen", "commands"],
 
@@ -14,7 +14,7 @@
                 "default": "Ctrl+Shift+Z",
                 "mac": "Command+Shift+Z"
             },
-          "description": "Translate text from clipboard"
+          "description": "Translate LaTeX from clipboard to TI-Nspire"
         }
       },
       "icons": {

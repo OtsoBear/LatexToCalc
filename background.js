@@ -1,5 +1,22 @@
+// Create a global variable to hold the controller. (This is used to create a snappier user experience by replacing old requests with new ones instantly.)
+let abortController;
+let processStartTime;
+
+// Listen for the command to translate clipboard content
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
+        // Record the process start time
+        processStartTime = performance.now();
+
+        // Check if there's an ongoing request, and abort it if exists
+        if (abortController) {
+            abortController.abort();
+        }
+        
+        // Create a new AbortController for the new request
+        abortController = new AbortController();
+
+        // Get the active tab
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const activeTab = activeTabs[0];
         if (activeTab) {
@@ -7,7 +24,9 @@ chrome.commands.onCommand.addListener(async (command) => {
                 target: { tabId: activeTab.id },
                 function: async () => {
                     try {
+                        // Read text from clipboard
                         const textFromClipboard = await navigator.clipboard.readText();
+                        // Send message to background script with clipboard text
                         chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromClipboard });
                     } catch (error) {
                         console.log('Error reading from clipboard:', error);
@@ -17,70 +36,127 @@ chrome.commands.onCommand.addListener(async (command) => {
             });
         } else {
             console.log('No active tab found.');
-            alert('No active tab found.');
+            alert('Click on a tab first.');
         }
     }
 });
 
+// Listen for messages from the script above, with clipboard text
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.type === "GET_CLIPBOARD_TEXT") {
+        // Extract clipboard text from message
         const clipboardText = request.clipboardText;
         console.log("Clipboard text:", clipboardText);
         
-        const serverAddress = "otso.veistera.com";
-        const secondaryAddresses = ["207.127.91.252", "otsoveistera.xyz", "207.127.91.252:5002"];
-        
-        const addresses = [serverAddress].concat(secondaryAddresses);
+        // Multiple backup addresses for extra reliability
+        const addresses = ["otso.veistera.com", "otsoveistera.xyz", "207.127.91.252", "207.127.91.252:5002"];
+       
+        // Define HTTP schemes to try (in case of SSL certification issues or other trouble)
         const schemes = ['https://', 'http://', ''];
 
         let translationSuccessful = false;
+        let addressAvailable = false;
 
+        // Loop through each scheme and address combination 
         for (const address of addresses) {
+            addressAvailable = false; // Reset the flag for each address
+            console.log(`Trying ${address}:`)
             for (const scheme of schemes) {
                 const fullAddress = scheme + address;
-                console.log(`Attempting translation with ${fullAddress}/translate`);
+                console.log(`   with ${scheme ? scheme.replace(':', '').replace('//', '') : 'no scheme'}`);
                 try {
-                    const response = await fetch(`${fullAddress}/translate`, {
+                    // Start timer for fetch request
+                    const fetchStart = performance.now();
+
+                    // Send fetch request with a 5-second timeout
+                    const response = await fetchWithTimeout(`${fullAddress}/translate`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ expression: clipboardText })
-                    });
+                        body: JSON.stringify({ expression: clipboardText }),
+                        signal: abortController.signal // Attach abort signal to the request
+                    }, 5000); // 5 seconds timeout
+                    
+                    // End timer for fetch request
+                    const fetchEnd = performance.now();
+                    console.log(`Fetch request took ${(fetchEnd - fetchStart).toFixed(0)} ms`);
 
                     if (response.ok) {
+                        // If translation is successful, extract the translated text
                         const data = await response.json();
                         const translatedText = data.result;
-                        console.log('Translation successful:', translatedText);
+
+                        // Add translated text to clipboard
                         addToClipboard(translatedText);
                         translationSuccessful = true;
+                        addressAvailable = true;
+
+                        // End the process time measurement
+                        timetaken = performance.now() - processStartTime;
+
+                        console.log(`Translation with ${fullAddress} took ${timetaken.toFixed(0)} ms: ${translatedText}`);
+
+
+
                         return; // Exit the function if successful
                     } else {
-                        console.log(`Translation server error: ${response.statusText} at ${fullAddress}/translate`);
+                        console.log(`Translation server error, response not "ok": ${response.statusText} at ${fullAddress}/translate`);
                     }
                 } catch (error) {
-                    console.log(`Translation server error: ${error.message} at ${fullAddress}/translate`);
+                    // Check if the error is due to aborting the request
+                    if (error.name === 'AbortError') {
+                        console.log('Request aborted.');
+                        return;
+                    } else {
+                        // Log translation server error if request fails
+                        //console.log(`${error.message}`);
+                    }
                 }
+            }
+            // If the address is not available, print "unavailable"
+            if (!addressAvailable) {
+                console.log(`${address} unavailable`);
             }
         }
 
+        // If translation is still not successful, log an error and alert the user
         if (!translationSuccessful) {
+            // Log error if translation fails
             console.error('Failed to translate clipboard');
-            alert('Failed to translate clipboard. Please try again later.');
+            // Display alert if translation fails
+            alert('Failed to translate clipboard. Please try again later or contact otso@veistera.com');
         }
     }
 });
 
+// Function to add text to clipboard
 async function addToClipboard(value) {
+    // Create a new offscreen document to write text to clipboard
     await chrome.offscreen.createDocument({
         url: 'offscreen.html',
         reasons: [chrome.offscreen.Reason.CLIPBOARD],
         justification: 'Write text to the clipboard.'
     });
 
+    // Send message to background script to copy data to clipboard
     chrome.runtime.sendMessage({
         type: 'copy-data-to-clipboard',
         target: 'offscreen-doc',
         data: value
     });
+}
+
+// Function to send fetch request with timeout
+async function fetchWithTimeout(url, options, timeout) {
+    // Create a new AbortController instance
+    const controller = new AbortController();
+    // Set a timeout to abort the request after the specified milliseconds
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    // Send fetch request with AbortController's signal
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Clear the timeout
+    clearTimeout(timeoutId);
+    // Return the fetch response
+    return response;
 }
