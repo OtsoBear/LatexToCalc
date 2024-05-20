@@ -1,0 +1,68 @@
+/* styles.css */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #24292e; /* Dark gray background */
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    width: 280px; /* Adjust width as needed */
+    height: auto; /* Let the content determine height */
+    margin: 30px auto;
+    padding: 20px;
+    background-color: #2f363d; /* Slightly lighter background */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    display: flex; /* Use flexbox */
+    flex-direction: column; /* Align items vertically */
+    align-items: center; /* Center items horizontally */
+    text-align: center; /* Center text horizontally */
+}
+
+
+.logo {
+    margin-bottom: 20px; /* Add some space below the logo */
+}
+.logo img {
+    width: 60px;
+    height: auto;
+}
+.chrome-url {
+    background-color: #17458a; /* Different background color for chrome URL */
+    color: #ffffffaf; /* White text color */
+    padding: 4px 8px; /* Add padding for better readability */
+    border-radius: 4px; /* Add rounded corners */
+    display: inline-block; /* Make it inline-block to allow for selection */
+    margin: 0; /* Reset margin */
+}
+.title {
+    text-align: center;
+    color: #d1d5da; /* Light gray text */
+    margin-bottom: 20px;
+}
+
+.subtitle {
+    text-align: center;
+    color: #d1d5da; /* Light gray text */
+    margin-bottom: 20px;
+}
+
+.content p {
+    color: #c9d1d9; /* Lighter text color */
+    margin-bottom: 10px; /* Add some space between paragraphs */
+}
+
+.footer {
+    text-align: center;
+    color: #adbac7; /* Even lighter gray text for footer */
+    margin-top: 20px;
+}
+
+.footer a {
+    color: #4493f8; /* Link color */
+    text-decoration: none;
+}
+
+.footer a:hover {
+    text-decoration: underline;
+}

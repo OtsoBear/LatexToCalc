@@ -1,5 +1,5 @@
-// Create a global variable to hold the controller. (This is used to create a snappier user experience by replacing old requests with new ones instantly.)
-let abortController;
+// Create a global variable to hold the controller for the main operation
+let mainAbortController;
 let processStartTime;
 
 // Listen for the command to translate clipboard content
@@ -8,13 +8,13 @@ chrome.commands.onCommand.addListener(async (command) => {
         // Record the process start time
         processStartTime = performance.now();
 
-        // Check if there's an ongoing request, and abort it if exists
-        if (abortController) {
-            abortController.abort();
+        // Check if there's an ongoing main operation, and abort it if exists
+        if (mainAbortController) {
+            mainAbortController.abort();
         }
         
-        // Create a new AbortController for the new request
-        abortController = new AbortController();
+        // Create a new AbortController for the new main operation
+        mainAbortController = new AbortController();
 
         // Get the active tab
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -74,8 +74,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ expression: clipboardText }),
-                        signal: abortController.signal // Attach abort signal to the request
+                        body: JSON.stringify({ expression: clipboardText })
                     }, 5000); // 5 seconds timeout
                     
                     // End timer for fetch request
@@ -93,12 +92,9 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                         addressAvailable = true;
 
                         // End the process time measurement
-                        timetaken = performance.now() - processStartTime;
+                        const timetaken = performance.now() - processStartTime;
 
                         console.log(`Translation with ${fullAddress} took ${timetaken.toFixed(0)} ms: ${translatedText}`);
-
-
-
                         return; // Exit the function if successful
                     } else {
                         console.log(`Translation server error, response not "ok": ${response.statusText} at ${fullAddress}/translate`);
@@ -107,10 +103,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     // Check if the error is due to aborting the request
                     if (error.name === 'AbortError') {
                         console.log('Request aborted.');
-                        return;
                     } else {
-                        // Log translation server error if request fails
-                        //console.log(`${error.message}`);
+                        console.log(`${error.message}`);
                     }
                 }
             }
@@ -149,14 +143,16 @@ async function addToClipboard(value) {
 
 // Function to send fetch request with timeout
 async function fetchWithTimeout(url, options, timeout) {
-    // Create a new AbortController instance
+    // Create a new AbortController instance for this specific request
     const controller = new AbortController();
     // Set a timeout to abort the request after the specified milliseconds
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    // Send fetch request with AbortController's signal
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    // Clear the timeout
-    clearTimeout(timeoutId);
-    // Return the fetch response
-    return response;
+    try {
+        // Send fetch request with AbortController's signal
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        return response;
+    } finally {
+        // Clear the timeout
+        clearTimeout(timeoutId);
+    }
 }
