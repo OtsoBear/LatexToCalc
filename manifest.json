@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Finspire",
+    "name": "LatexToCalc",
     "version": "1.1.0",
     "description": "Translate LaTeX text from clipboard to a calculator compatible format.",
     "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "offscreen", "commands"],
@@ -14,7 +14,7 @@
                 "default": "Ctrl+Shift+Z",
                 "mac": "Command+Shift+Z"
             },
-          "description": "Translate Clipboard"
+          "description": "Translate clipboard"
         }
       },
       "icons": {
