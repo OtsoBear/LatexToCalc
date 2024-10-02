@@ -1,69 +1,88 @@
 // Create a global variable to hold the controller for the main operation
 let mainAbortController;
 let processStartTime;
-
+// Global cache for the most recent input and translated output
+let lastInputText = '';
+let lastOutputText = '';
 // Function to send a message to the active tab to show the popup
 function showPopupInTab(tabId, message) {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_POPUP', message: message });
 }
 
-// Function to check internet connection
-async function checkInternetConnection() {
-    try {
-        const response = await fetch('https://www.google.com', { method: 'HEAD' });
-        return response.ok;
-    } catch (error) {
-        return false;
-    }
-}
-
-// Listen for commands
+// Listen for the command to translate clipboard content
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
+        console.log("Translate clipboard starts");
         processStartTime = performance.now();
+
         if (mainAbortController) {
             mainAbortController.abort();
         }
         mainAbortController = new AbortController();
+
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const activeTab = activeTabs[0];
         if (activeTab) {
             chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
                 function: async () => {
-                    try {
-                        const textFromClipboard = await navigator.clipboard.readText();
-                        chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromClipboard });
-                    } catch (error) {
-                        console.log('Error reading from clipboard:', error);
-                        showPopupInTab(activeTab.id, 'Failed to read from clipboard. Please try again.');
+                    const textFromIframe = await getTextFromIframe(); // Accessing the function from content.js
+                    if (textFromIframe && textFromIframe.trim() !== "") {
+                        chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromIframe });
+                    } else {
+                        try {
+                            const textFromClipboard = await navigator.clipboard.readText();
+                            chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromClipboard });
+                        } catch (error) {
+                            console.error('Error reading from clipboard:', error);
+                            chrome.runtime.sendMessage({
+                                type: 'SHOW_POPUP',
+                                message: 'Failed to read from clipboard. Please try again.'});
+                        }
                     }
                 }
             });
         } else {
-            console.log('No active tab found.');
-            showPopupInTab(activeTab.id, 'Click on a tab first.');
+            console.warn('No active tab found. Please click on a tab first.');
         }
     }
 });
 
-// Listen for messages from the content script
+
+// Listen for messages from the content script (clipboard or iframe text)
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.type === "GET_CLIPBOARD_TEXT") {
         const clipboardText = request.clipboardText;
-        console.log("Clipboard text:", clipboardText);
+        console.log("Text to be translated:", clipboardText);
 
-        const addresses = ["otso.veistera.com", "129.151.205.209"];
+        // Check if the clipboard text is the same as the last input (cache check)
+        if (clipboardText === lastInputText) {
+            console.log("Using cached translation.");
+            // Use cached translation
+            await addToClipboard(lastOutputText);
+
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const activeTab = activeTabs[0];
+            if (activeTab) {
+                // Send a message to the active tab to show the "Translated" popup
+                chrome.tabs.sendMessage(activeTab.id, { message: 'Translated' });
+
+            }
+            return; // Skip translation since it's already cached
+        }
+
+
+
+        const addresses = ["otso.veistera.csom", "129.151.205.209s"];
         const schemes = ['https://', 'http://'];
-        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        const activeTab = activeTabs[0];
+
         let translationSuccessful = false;
 
         for (const address of addresses) {
             for (const scheme of schemes) {
-                const fullAddress = `${scheme}${address}/translate`;
+                const fullAddress = `${scheme}${address}`;
                 try {
-                    const response = await fetchWithTimeout(fullAddress, {
+                    const response = await fetchWithTimeout(`${fullAddress}/translate`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -74,12 +93,24 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     if (response.ok) {
                         const data = await response.json();
                         const translatedText = data.result;
-                        addToClipboard(translatedText);
+
+
+                        // Add translated text to clipboard
+                        await addToClipboard(translatedText);
                         translationSuccessful = true;
                         console.log(`Translation successful: ${translatedText}`);
-                        
-                        message = "Translated" 
-                        chrome.tabs.sendMessage(activeTab.id, { type: 'SHOW_POPUP', message: message });
+
+                        // Update the cache with the latest input and output
+                        lastInputText = clipboardText;
+                        lastOutputText = translatedText;
+
+                        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                        const activeTab = activeTabs[0];
+
+                        if (activeTab) {
+                            // Send a message to the active tab to show the "Translated" popup
+                            chrome.tabs.sendMessage(activeTab.id, { message: 'Translated' });
+                        }
                         return;
                     } else {
                         console.log(`Error: ${response.statusText}`);
@@ -91,41 +122,22 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
 
         if (!translationSuccessful) {
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const activeTab = activeTabs[0];
             console.error('Failed to translate clipboard');
-            const isConnected = await checkInternetConnection();
-            if (isConnected) {
-                showPopupInTab(sender.tab.id, 'Server is down. Contact otso.veistera@gmail.com');
-            } else {
-                showPopupInTab(sender.tab.id, 'Cannot connect to the internet. Please check your connection.');
-            }
+            showPopupInTab(activeTab.id, 'Failed to translate clipboard, the server is down.' );
         }
     }
 });
 
-// Function to send fetch request with timeout
-async function fetchWithTimeout(url, options, timeout) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        return response;
-    } finally {
-        clearTimeout(timeoutId);
-    }
-}
-
-
-
-// Function to add text to clipboard
+// Function to add text to clipboard (same as provided in the original code)
 async function addToClipboard(value) {
-    // Create a new offscreen document to write text to clipboard
     await chrome.offscreen.createDocument({
         url: 'offscreen.html',
         reasons: [chrome.offscreen.Reason.CLIPBOARD],
         justification: 'Write text to the clipboard.'
     });
 
-    // Send message to background script to copy data to clipboard
     chrome.runtime.sendMessage({
         type: 'copy-data-to-clipboard',
         target: 'offscreen-doc',
@@ -133,32 +145,14 @@ async function addToClipboard(value) {
     });
 }
 
-// Function to send fetch request with timeout
+// Function to send fetch request with timeout (unchanged)
 async function fetchWithTimeout(url, options, timeout) {
-    // Create a new AbortController instance for this specific request
     const controller = new AbortController();
-    // Set a timeout to abort the request after the specified milliseconds
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
-        // Send fetch request with AbortController's signal
         const response = await fetch(url, { ...options, signal: controller.signal });
         return response;
     } finally {
-        // Clear the timeout
         clearTimeout(timeoutId);
     }
 }
-
-// background.js
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'SHOW_TRANSLATED_POPUP') {
-        console.log("Received request to show translated popup.");
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs.length > 0) {
-                chrome.tabs.sendMessage(tabs[0].id, { type: 'SHOW_TRANSLATED_POPUP' });
-            } else {
-                console.error("No active tab found.");
-            }
-        });
-    }
-});
