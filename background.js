@@ -1,12 +1,13 @@
 // Create a global variable to hold the controller for the main operation
 let mainAbortController;
 let processStartTime;
+
 // Function to send a message to the active tab to show the popup
 function showPopupInTab(tabId, message) {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_POPUP', message: message });
 }
 
-// Function to check internet connection by trying to connect to google.com
+// Function to check internet connection
 async function checkInternetConnection() {
     try {
         const response = await fetch('https://www.google.com', { method: 'HEAD' });
@@ -16,7 +17,7 @@ async function checkInternetConnection() {
     }
 }
 
-// Listen for the command to translate clipboard content
+// Listen for commands
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
         processStartTime = performance.now();
@@ -46,79 +47,73 @@ chrome.commands.onCommand.addListener(async (command) => {
     }
 });
 
-// Listen for messages from the script above, with clipboard text
+// Listen for messages from the content script
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.type === "GET_CLIPBOARD_TEXT") {
         const clipboardText = request.clipboardText;
         console.log("Clipboard text:", clipboardText);
 
-        const addresses = ["otso.veistera.cdom", "129d.151.205.209"];
+        const addresses = ["otso.veistera.com", "129.151.205.209"];
         const schemes = ['https://', 'http://'];
-
+        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const activeTab = activeTabs[0];
         let translationSuccessful = false;
-        let addressAvailable = false;
 
         for (const address of addresses) {
-            addressAvailable = false;
-            console.log(`Trying ${address}:`)
             for (const scheme of schemes) {
-                const fullAddress = scheme + address;
-                console.log(`   with ${scheme.replace('://', '')}`);
+                const fullAddress = `${scheme}${address}/translate`;
                 try {
-                    const fetchStart = performance.now();
-                    const response = await fetchWithTimeout(`${fullAddress}/translate`, {
+                    const response = await fetchWithTimeout(fullAddress, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ expression: clipboardText })
-                    }, 5000); 
-                    
-                    const fetchEnd = performance.now();
-                    console.log(`Fetch request took ${(fetchEnd - fetchStart).toFixed(0)} ms`);
+                    }, 5000);
 
                     if (response.ok) {
                         const data = await response.json();
                         const translatedText = data.result;
                         addToClipboard(translatedText);
                         translationSuccessful = true;
-                        addressAvailable = true;
-                        const timetaken = performance.now() - processStartTime;
-
-                        console.log(`Translation with ${fullAddress} took ${timetaken.toFixed(0)} ms: \"${translatedText}\"`);
+                        console.log(`Translation successful: ${translatedText}`);
+                        
+                        message = "Translated" 
+                        chrome.tabs.sendMessage(activeTab.id, { type: 'SHOW_POPUP', message: message });
                         return;
                     } else {
-                        console.log(`Translation server error, response not "ok": ${response.statusText} at ${fullAddress}/translate`);
+                        console.log(`Error: ${response.statusText}`);
                     }
                 } catch (error) {
-                    if (error.name === 'AbortError') {
-                        console.log('Request aborted.');
-                    } else {
-                        console.log(`${error.message}`);
-                    }
+                    console.log(`Fetch error: ${error.message}`);
                 }
-            }
-            if (!addressAvailable) {
-                console.log(`${address} unavailable`);
             }
         }
 
         if (!translationSuccessful) {
             console.error('Failed to translate clipboard');
-
-            // Check internet connection
             const isConnected = await checkInternetConnection();
-
             if (isConnected) {
-                // Server is likely down
                 showPopupInTab(sender.tab.id, 'Server is down. Contact otso.veistera@gmail.com');
             } else {
-                // No internet connection
                 showPopupInTab(sender.tab.id, 'Cannot connect to the internet. Please check your connection.');
             }
         }
     }
 });
+
+// Function to send fetch request with timeout
+async function fetchWithTimeout(url, options, timeout) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        return response;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 
 
 // Function to add text to clipboard
@@ -153,3 +148,17 @@ async function fetchWithTimeout(url, options, timeout) {
         clearTimeout(timeoutId);
     }
 }
+
+// background.js
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'SHOW_TRANSLATED_POPUP') {
+        console.log("Received request to show translated popup.");
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, { type: 'SHOW_TRANSLATED_POPUP' });
+            } else {
+                console.error("No active tab found.");
+            }
+        });
+    }
+});

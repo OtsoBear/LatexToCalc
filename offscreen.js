@@ -16,6 +16,8 @@ async function handleMessages(message) {
     case 'copy-data-to-clipboard':
       console.log("Copying data to clipboard:", message.data);
       handleClipboardWrite(message.data);
+
+      chrome.runtime.sendMessage({ type: 'SHOW_TRANSLATED_POPUP' });
       break;
     default:
       console.warn(`Unexpected message type received: '${message.type}'.`);
