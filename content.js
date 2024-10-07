@@ -88,7 +88,13 @@ function getTextFromIframe() {
             }
         }
     }
+    else {
+    var hiddenImage = document.querySelector('div.answer.rich-text-editor.rich-text-focused img[style="display: none;"]');
+    if (hiddenImage) {
+        return hiddenImage.alt;
+    }
     return getSelectedText(document); // Fallback to normal selection
+}
 }
 
 // Function to get selected text
