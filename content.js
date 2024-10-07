@@ -1,11 +1,14 @@
+//content.js
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    
     if (request.message === 'Translated') {
         showTranslatedPopup();
     } else if (request.type === 'SHOW_POPUP') {
         showPopup(request.message);
     }
 });
+
 
 // Function to show a custom popup with a fade-out effect and clickable link
 function showPopup(message) {
