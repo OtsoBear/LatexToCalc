@@ -7,59 +7,109 @@ body {
 }
 
 .container {
-    width: 280px; /* Adjust width as needed */
-    height: auto; /* Let the content determine height */
+    width: 300px; /* Slightly wider for readability */
+    height: auto;
     margin: 30px auto;
     padding: 20px;
     background-color: #2f363d; /* Slightly lighter background */
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    display: flex; /* Use flexbox */
-    flex-direction: column; /* Align items vertically */
-    align-items: center; /* Center items horizontally */
-    text-align: center; /* Center text horizontally */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
-
 .logo {
-    margin-bottom: 20px; /* Add some space below the logo */
+    margin-bottom: 20px;
 }
 .logo img {
     width: 60px;
     height: auto;
 }
-.chrome-url {
-    background-color: #17458a; /* Different background color for chrome URL */
-    color: #ffffffaf; /* White text color */
-    padding: 4px 8px; /* Add padding for better readability */
-    border-radius: 4px; /* Add rounded corners */
-    display: inline-block; /* Make it inline-block to allow for selection */
-    margin: 0; /* Reset margin */
-}
 .title {
-    text-align: center;
-    color: #d1d5da; /* Light gray text */
-    margin-bottom: 20px;
-}
-
-.subtitle {
-    text-align: center;
-    color: #d1d5da; /* Light gray text */
-    margin-bottom: 20px;
+    color: #d1d5da;
+    margin-bottom: 10px;
 }
 
 .content p {
-    color: #c9d1d9; /* Lighter text color */
-    margin-bottom: 10px; /* Add some space between paragraphs */
+    color: #c9d1d9;
+    margin-bottom: 12px;
+    line-height: 1.5; /* Improved readability */
+    font-size: 0.9em; /* Slightly smaller font size */
+}
+
+.key {
+    background-color: #3a3f45; /* Soft gray background for keys */
+    color: #c9d1d9; /* Light gray text */
+    padding: 3px 6px; /* Adjusted padding for better button effect */
+    border-radius: 4px; /* Rounded corners */
+    font-size: 1.05em; /* Slightly smaller font to mimic keycaps */
+    font-weight: bold;
+    margin: 0; /* Removed margin to bring keys closer together */
+    display: inline-block; /* Ensures keys are treated as blocks */
+}
+.plus {
+    color: #c9d1d9; /* Match the key text color */
+    font-size: 1.05em; /* Match the key size */
+    margin: 0 2px; /* Add spacing between keys */
+}
+
+.keybind {
+    text-align: center; /* Center-align the keybind */
+    margin: 10px 0; /* Add margin for spacing */
+}
+
+.chrome-url {
+    background-color: #17458a;
+    color: #ffffffd0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 0;
+}
+
+.instruction-text {
+    color: #e1e4e8;
+    font-size: 0.9em;
+    margin-top: 10px;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.subtle-highlight {
+    background-color: #3a3f45; /* Softer gray background */
+    color: #c9d1d9; /* Light gray text */
+    padding: 1px 4px; /* Reduced padding */
+    border-radius: 3px; /* Small border radius */
+    font-weight: 500; /* Medium weight for slight emphasis */
+}
+
+
+.supported-sites {
+    color: #c9d1d9;
+    font-size: 0.9em;
+    margin-top: 10px;
+    text-align: center;
+}
+
+.supported-sites a {
+    color: #4493f8; /* Blue color for links */
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.supported-sites a:hover {
+    text-decoration: underline;
 }
 
 .footer {
     text-align: center;
-    color: #adbac7; /* Even lighter gray text for footer */
+    color: #adbac7;
     margin-top: 20px;
 }
 
 .footer a {
-    color: #4493f8; /* Link color */
+    color: #4493f8;
     text-decoration: none;
 }
 

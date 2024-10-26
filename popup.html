@@ -2,26 +2,44 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LatexToCalc</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <div class="logo">
-            <img src="icon.png" alt="LatexToCalc Logo" style="width: 60px;">
-        </div>
-        <div class="title">
-            <h1>LatexToCalc</h1>
-        </div>
-        <div class="content">
-            <p>Press Ctrl+Shift+Z to translate clipboard.</p>
-            <p>If the shortcut doesn't work, edit it at </p>
-            <p><span class="chrome-url">chrome://extensions/shortcuts</span></p>
-        </div>
+        <header>
+            <div class="logo">
+                <img src="icon.png" alt="LatexToCalc Logo">
+            </div>
+            <div class="title">
+                <h1>LatexToCalc</h1>
+            </div>
+        </header>
         
-        <div class="footer">
+        <main class="content">
+            <p>Press:</p>
+            <div class="keybind">
+                <span class="key">Ctrl</span> 
+                <span class="plus">+</span> 
+                <span class="key">Shift</span> 
+                <span class="plus">+</span> 
+                <span class="key">Z</span>
+            </div>
+            <p>to translate the selected equation.</p>
+            <p>If the shortcut doesn't work, set it at:</p>
+            <p><a href="chrome://extensions/shortcuts" class="chrome-url" target="_blank" rel="noopener noreferrer">chrome://extensions/shortcuts</a></p>
+            <p>Also <strong>restart your browser</strong></p>
+            <p class="instruction-text">
+                The translated text will be either from the <span class="subtle-highlight">focused equation,</span> 
+                <span class="subtle-highlight">selected text,</span> or the <span class="subtle-highlight">clipboard</span>.
+            </p>
+            <p class="supported-sites">Works with <a href="https://math-demo.abitti.fi/" target="_blank" rel="noopener noreferrer">math-demo.abitti.fi</a> and <a href="https://sanomapro.fi" target="_blank" rel="noopener noreferrer">sanomapro.fi</a></p>
+        </main>
+        
+        <footer class="footer">
             <p>Created by <a href="https://github.com/OtsoBear">Otso Veister&auml;</a></p>
-        </div>
+        </footer>
     </div>
     <script src="popup.js"></script>
 </body>

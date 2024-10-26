@@ -145,6 +145,12 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
     }
 });
+// Open instructions on install
+chrome.runtime.onInstalled.addListener(() => {
+    const urlToOpen = chrome.runtime.getURL("popup.html"); 
+    chrome.tabs.create({ url: urlToOpen });
+});
+
 
 // Function to inject the clipboard copy operation into the active tab
 function injectCopyTextToClipboard(text) {

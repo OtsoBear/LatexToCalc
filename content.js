@@ -1,25 +1,15 @@
-//content.js
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    
     if (request.message === 'Translated') {
-        showTranslatedPopup();
+        showPopup('green', 'Translated and copied to clipboard.');
     } else if (request.type === 'SHOW_POPUP') {
-        showPopup(request.message);
+        showPopup('red', request.message + ' Meanwhile, visit: ', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
     }
 });
 
-
-// Function to show a custom popup with a fade-out effect and clickable link
-function showPopup(message) {
-    const popup = createPopup('red', message + ' Meanwhile, visit: ', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
-    document.body.appendChild(popup);
-    fadeOutAndRemove(popup);
-}
-
-// Function to show a custom green box popup indicating translation success
-function showTranslatedPopup() {
-    const popup = createPopup('green', 'Translated and copied to clipboard.');
+// Function to show a custom popup with a fade-out effect
+function showPopup(color, message, linkUrl = null) {
+    const popup = createPopup(color, message, linkUrl);
     document.body.appendChild(popup);
     fadeOutAndRemove(popup);
 }
@@ -52,14 +42,15 @@ function createPopup(color, message, linkUrl) {
     return popup;
 }
 
-// Helper function to create a link element
+// Helper function to create a clickable link element
 function createLink(url) {
     const link = document.createElement('a');
     link.href = url;
     link.innerText = url;
     link.style.color = 'white';
     link.style.textDecoration = 'underline';
-    link.target = '_blank';  // Open the link in a new tab
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer'; // Security improvement
     return link;
 }
 
@@ -87,14 +78,19 @@ function getTextFromIframe() {
                 if (hiddenImage) return hiddenImage.alt;
             }
         }
+    } else {
+        const equationEditorDiv = document.querySelector('div[data-testid="equation-editor"]');
+        if (equationEditorDiv) {
+            const editorValue = equationEditorDiv.getAttribute('data-latex');
+            const selectedText = getSelectedText(document).trim();
+
+            if (selectedText && editorValue.includes(selectedText)) {
+                return selectedText;
+            }
+            return editorValue; // Return latexValue
+        }
+        return getSelectedText(document); // Fallback to normal selection
     }
-    else {
-    var hiddenImage = document.querySelector('div.answer.rich-text-editor.rich-text-focused img[style="display: none;"]');
-    if (hiddenImage) {
-        return hiddenImage.alt;
-    }
-    return getSelectedText(document); // Fallback to normal selection
-}
 }
 
 // Function to get selected text
