@@ -15,10 +15,10 @@ function showPopupInTab(tabId, message) {
 // Function to check if the user has an active internet connection
 async function checkInternetConnection() {
     try {
-        const response = await fetchWithTimeout('https://www.google.com', {}, 5000); // 5-second timeout
-        return response.ok; // Internet connection is available if the response is OK
+        const response = await fetch('https://www.google.com', { method: 'GET' });
+        return response.ok;
     } catch (error) {
-        return false; // No internet connection
+        return false;
     }
 }
 
