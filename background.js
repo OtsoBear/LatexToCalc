@@ -68,8 +68,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         const clipboardText = request.clipboardText;
         console.log("Text to be translated:", clipboardText);
 
-        // Check if the clipboard text is the same as the last input (cache check)
-        if (clipboardText === lastInputText) {
+        // Check if the clipboard text is the same as the last input, or last output (cache check)
+        if (clipboardText === lastInputText || clipboardText === lastOutputText) {
             console.log("Using cached translation.");
             // Use cached translation
             injectCopyTextToClipboard(lastOutputText);
