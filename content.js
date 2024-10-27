@@ -78,13 +78,14 @@ function getTextFromIframe() {
                 if (hiddenImage) return hiddenImage.alt;
             }
         }
-    } else {
+    } 
+    else {
         const equationEditorDiv = document.querySelector('div[data-testid="equation-editor"]');
         if (equationEditorDiv) {
             const editorValue = equationEditorDiv.getAttribute('data-latex');
-            const selectedText = getSelectedText(document).trim();
-
-            if (selectedText && editorValue.includes(selectedText)) {
+            const selectedText = getSelectedText(document);
+            const removeWhiteSpace = (str) => str.replace(/\s+/g, '');
+            if (selectedText && removeWhiteSpace(editorValue).includes(removeWhiteSpace(selectedText))) {
                 return selectedText;
             }
             return editorValue; // Return latexValue
@@ -96,5 +97,5 @@ function getTextFromIframe() {
 // Function to get selected text
 function getSelectedText(doc) {
     const selection = doc.defaultView.getSelection();
-    return selection.rangeCount > 0 ? selection.toString() : '';
+    return selection.toString() || '';
 }
