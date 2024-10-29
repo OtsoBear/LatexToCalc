@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "LatexToCalc",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "description": "Translate LaTeX text from clipboard to a calculator compatible format.",
     "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "commands"],
     "host_permissions": [
