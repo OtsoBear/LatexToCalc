@@ -68,7 +68,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         const clipboardText = request.clipboardText;
         console.log("Text to be translated:", clipboardText);
 
-        // Check if the clipboard text is the same as the last input, or last output (cache check)
+        // Check if the clipboard text is the same as the last input or last output (cache check)
         if (clipboardText === lastInputText || clipboardText === lastOutputText) {
             console.log("Using cached translation.");
             // Use cached translation
@@ -96,27 +96,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ expression: clipboardText })
+                        body: JSON.stringify({ expression: clipboardText, ...settings })
                     }, 5000);
 
                     if (response.ok) {
                         const data = await response.json();
                         const translatedText = data.result;
-
-                        // Add translated text to clipboard
                         injectCopyTextToClipboard(translatedText);
-                        
                         translationSuccessful = true;
                         console.log(`Translation successful: ${translatedText}`);
-
-                        // Update the cache with the latest input and output
                         lastInputText = clipboardText;
                         lastOutputText = translatedText;
 
                         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
                         const activeTab = activeTabs[0];
                         if (activeTab) {
-                            // Send a message to the active tab to show the "Translated" popup
                             chrome.tabs.sendMessage(activeTab.id, { message: 'Translated' });
                         }
                         return;
@@ -130,7 +124,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
 
         if (!translationSuccessful) {
-            // Check if the user has an active internet connection
             const hasInternet = await checkInternetConnection();
             const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const activeTab = activeTabs[0];
@@ -145,6 +138,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
     }
 });
+
 // Open instructions on install
 chrome.runtime.onInstalled.addListener(() => {
     const urlToOpen = chrome.runtime.getURL("popup.html"); 
