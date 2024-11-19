@@ -6,13 +6,15 @@
     "permissions": ["clipboardRead", "clipboardWrite", "activeTab", "scripting", "commands"],
     "host_permissions": [
       "https://kampus.sanomapro.fi/*",
-      "https://math-demo.abitti.fi/*"
+      "https://math-demo.abitti.fi/*",
+      "https://maol.otava.fi/*"
     ],
     "content_scripts": [
       {
         "matches": [
           "https://kampus.sanomapro.fi/*",
-          "https://math-demo.abitti.fi/*"
+          "https://math-demo.abitti.fi/*",
+          "https://maol.otava.fi/*"
         ],
         "js": ["content.js"]
       }
