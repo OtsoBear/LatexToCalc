@@ -1,6 +1,6 @@
 # LatexToCalc Chrome Extension
 
-LatexToCalc is a Chrome extension that simplifies the process of entering LaTeX-based math formulas into calculators. It captures LaTeX formulas from the clipboard and translates them into a format compatible with calculators like the **TI-Nspire CX CAS**.
+LatexToCalc is a [ Chrome extension](https://chromewebstore.google.com/detail/latextocalc/nangjgcfgoikendjhgbcmobbcpijdcjn) that simplifies the process of entering LaTeX-based math formulas into calculators. It captures LaTeX formulas from the clipboard and translates them into a format compatible with calculators like the **TI-Nspire CX CAS**.
 
 
 
