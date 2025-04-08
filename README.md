@@ -1,8 +1,6 @@
 # LatexToCalc Chrome Extension
 
-LatexToCalc is a [ Chrome extension](https://chromewebstore.google.com/detail/latextocalc/nangjgcfgoikendjhgbcmobbcpijdcjn) that simplifies the process of entering LaTeX-based math formulas into calculators. It captures LaTeX formulas from the clipboard and translates them into a format compatible with calculators like the **TI-Nspire CX CAS**.
-
-
+LatexToCalc is a [Chrome extension](https://chromewebstore.google.com/detail/latextocalc/nangjgcfgoikendjhgbcmobbcpijdcjn) that simplifies the process of entering LaTeX-based math formulas into calculators. It captures LaTeX formulas from the clipboard and translates them into a format compatible with calculators like the **TI-Nspire CX CAS** or **Speedcrunch**.
 
 ---
 
@@ -16,20 +14,46 @@ LatexToCalc allows you to easily convert LaTeX equations into calculator-compati
    - If the active page contains a LaTeX formula in a math editor or iframe (e.g., on `kampus.sanomapro.fi`), it extracts the LaTeX directly.
    - If no selection is made, it reads from the clipboard.
 
-3. **Translation**: The LaTeX text is sent to [the backend server](https://github.com/OtsoBear/LatexToCalc-Server), which converts it into a format compatible with calculators like the **TI-Nspire CX CAS**. Cached results are used to avoid unnecessary requests.
+3. **Translation**: The LaTeX text is sent to [the backend server](https://github.com/OtsoBear/LatexToCalc-Server), which converts it into a format compatible with your selected calculator (TI-Nspire or Speedcrunch). Cached results are used to avoid unnecessary requests.
 
 4. **Result Injection**: Once translated, the expression is copied back to the clipboard, ready to be pasted into your calculator.
 
 5. **Error Handling**: If translation fails (e.g., no internet connection), the extension provides an error message and offers troubleshooting tips.
 
+## Customizable Settings
 
+LatexToCalc offers several customization options to tailor the translation to your needs:
+
+### Calculator Type
+- **TI-Nspire**: Optimizes output for TI-Nspire CX CAS calculators (default)
+- **Speedcrunch**: Formats output for Speedcrunch calculator
+
+### Constants Handling
+You can customize how mathematical constants are treated during translation:
+
+- **Constants**: General toggle for mathematical constants
+- **k as Coulomb's constant**: Treats 'k' as Coulomb's constant in equations
+- **e as Euler's number**: Treats 'e' as Euler's number (≈2.71828)
+- **i as imaginary unit**: Treats 'i' as the imaginary unit (√-1)
+- **g as gravity**: Treats 'g' as the gravitational constant
+
+All settings are automatically saved to your browser's storage, ensuring your preferences persist between sessions.
 
 ## Key Features
 
-- **Clipboard Translation**: Effortlessly convert LaTeX formulas into a format optimized for calculators like TI-Nspire.
-- **Cross-Site Support**: Works seamlessly with math websites, including those used in Finnish high school curriculum.
-- **Cache and Retry Logic**: Implements a caching mechanism for recent translations and automatic retries to ensure translations are successful even with server downtime.
-  
+- **Multiple Calculator Support**: Choose between TI-Nspire and Speedcrunch formats
+- **Clipboard Translation**: Effortlessly convert LaTeX formulas into calculator-friendly formats
+- **Cross-Site Support**: Works seamlessly with math websites used in Finnish education
+- **Persistent Settings**: Your configuration is saved automatically
+- **Cache and Retry Logic**: Implements a caching mechanism for recent translations and automatic retries to ensure translations are successful even with server downtime
+
+## Supported Websites
+
+LatexToCalc has been tested and works with:
+- [math-demo.abitti.fi](https://math-demo.abitti.fi/)
+- [sanomapro.fi](https://sanomapro.fi)
+- [mafytaulukot.fi](https://mafytaulukot.fi/)
+- [maol.otava.fi](https://maol.otava.fi/)
 
 ## Error Management
 
