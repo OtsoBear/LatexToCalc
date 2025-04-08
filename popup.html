@@ -30,11 +30,44 @@
             <p>If the shortcut doesn't work, set it at:</p>
             <p><a href="chrome://extensions/shortcuts" class="chrome-url" target="_blank" rel="noopener noreferrer">chrome://extensions/shortcuts</a></p>
             <p>Also <strong>restart your browser</strong></p>
+
             <p class="instruction-text">
                 The translated text will be either from the <span class="subtle-highlight">focused equation,</span> 
                 <span class="subtle-highlight">selected text,</span> or the <span class="subtle-highlight">clipboard</span>.
             </p>
-            <p class="supported-sites">Works with <a href="https://math-demo.abitti.fi/" target="_blank" rel="noopener noreferrer">math-demo.abitti.fi</a> and <a href="https://sanomapro.fi" target="_blank" rel="noopener noreferrer">sanomapro.fi</a></p>
+            <p class="supported-sites">Tested with <a href="https://math-demo.abitti.fi/" target="_blank" rel="noopener noreferrer">math-demo.abitti.fi</a>, <a href="https://sanomapro.fi" target="_blank" rel="noopener noreferrer">sanomapro.fi</a>, <a href="https://mafytaulukot.fi/" target="_blank" rel="noopener noreferrer">mafytaulukot.fi</a>, and <a href="https://maol.otava.fi/" target="_blank" rel="noopener noreferrer">maol.otava.fi</a></p>
+            
+            <div class="settings">
+                <h3 class="settings-title">Settings</h3>
+                <label>
+                    <span class="setting-label">TI-Nspire</span>
+                    <input type="checkbox" id="TI_on">
+                </label>
+                <label>
+                    <span class="setting-label">Speedcrunch</span>
+                    <input type="checkbox" id="SC_on">
+                </label>
+                <label class="separator-after">
+                    <span class="setting-label">Constants</span>
+                    <input type="checkbox" id="constants_on">
+                </label>
+                <label>
+                    <span class="setting-label">k is coulomb's constant</span>
+                    <input type="checkbox" id="coulomb_on">
+                </label>
+                <label>
+                    <span class="setting-label">e is euler's number</span>
+                    <input type="checkbox" id="e_on">
+                </label>
+                <label>
+                    <span class="setting-label">i is imaginary unit</span>
+                    <input type="checkbox" id="i_on">
+                </label>
+                <label>
+                    <span class="setting-label">g is gravity</span>
+                    <input type="checkbox" id="g_on">
+                </label>
+            </div>
         </main>
         
         <footer class="footer">

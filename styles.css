@@ -4,6 +4,9 @@ body {
     background-color: #24292e; /* Dark gray background */
     margin: 0;
     padding: 0;
+    display:grid;
+    place-content:center;
+    place-items:center;
 }
 
 .container {
@@ -66,6 +69,36 @@ body {
     border-radius: 4px;
     display: inline-block;
     margin: 0;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.chrome-url::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -100%;
+    width: 40%;
+    height: 200%;
+    background: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    transform: rotate(25deg);
+    transition: all 0.6s ease;
+}
+
+.chrome-url:hover {
+    background-color: #1d5bb0;
+    box-shadow: 0 0 10px rgba(77, 166, 255, 0.5);
+    transform: translateY(-2px);
+}
+
+.chrome-url:hover::before {
+    left: 200%;
 }
 
 .instruction-text {
@@ -115,4 +148,107 @@ body {
 
 .footer a:hover {
     text-decoration: underline;
+}
+
+input {
+    --s: 10px; /* adjust this to control the size */
+    
+    height: var(--s);
+    aspect-ratio: 2.5;
+    width: auto; /* some browsers need this */
+    border-radius: var(--s);
+    padding: calc(var(--s)/10);
+    margin: calc(var(--s)/2);
+    cursor: pointer;
+    background:
+      radial-gradient(farthest-side,#15202a 96%,#0000) 
+        var(--_p,0%)/var(--s) content-box no-repeat,
+      var(--_c,#ff7a7a);
+    box-sizing: content-box;
+    transform-origin: calc(3*var(--s)/5) 50%;
+    transition: transform cubic-bezier(0,300,1,300) .5s,background .3s .1s ease-in;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+  
+  input:checked {
+    --_c: #85ff7a;
+    --_p: 100%;
+    transform-origin: calc(100% - 3*var(--s)/5) 50%;
+    transform: rotate(0.1deg);
+  }
+  .container {
+    width: 300px;
+    text-align: center;
+  }
+
+.settings {
+    display: flex;
+    flex-direction: column;
+    width: 85%;
+    margin: 20px auto 10px;
+    padding: 15px;
+    background-color: #343a40;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transform: perspective(800px) translateZ(0);
+    transform-style: preserve-3d;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.settings:hover {
+    transform: perspective(800px) translateZ(20px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.settings-title {
+    color: #d1d5da;
+    margin: 0 0 10px 0;
+    text-align: center;
+    font-size: 1.1em;
+    transform: translateZ(10px);
+}
+
+.settings label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 6px 0;
+    color: #c9d1d9;
+    font-size: 0.9em;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.settings label:hover {
+    background-color: #3a4149;
+    
+}
+
+.settings label.separator-after {
+    position: relative;
+}
+
+.settings label.separator-after::after {
+    content: '';
+    position: absolute;
+    bottom: -7px; /* Position just below the label without adding extra space */
+    left: -2px; /* Extend beyond the label edges */
+    right: -2px;
+    height: 1px;
+    background-color: #4a545e;
+    z-index: 1; /* Ensure line appears above other elements */
+}
+
+.setting-label {
+    margin-right: 8px;
+    flex: 1;
+    text-align: left;
+}
+
+input[type="checkbox"] {
+    margin-left: 8px;
+    margin-right: 0;
 }
