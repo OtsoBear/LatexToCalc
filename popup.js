@@ -10,6 +10,11 @@ document.addEventListener('DOMContentLoaded', function () {
         g_on: false
     };
 
+    // Add event listener for chrome://extensions/shortcuts button
+    document.getElementById("open-shortcuts").addEventListener('click', function() {
+        chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    });
+
     // Load settings from chrome.storage
     chrome.storage.sync.get("settings", function(data) {
         // Use the saved settings or fallback to defaults if none exist

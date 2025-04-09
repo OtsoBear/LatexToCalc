@@ -72,6 +72,10 @@ body {
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease;
+    border: none;
+    font-family: inherit;
+    font-size: 0.9em;
+    cursor: pointer;
 }
 
 .chrome-url::before {
