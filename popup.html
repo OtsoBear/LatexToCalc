@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LatexToCalc</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Set minimum width for the popup */
+        body {
+            min-width: 350px;
+            width: auto;
+        }
+        .container {
+            width: 100%;
+            max-width: 450px;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        
+        /* Simple text anti-aliasing */
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* Override any problematic hover effects */
+        a:hover, button:hover, .key:hover, .setting-label:hover, .subtle-highlight:hover {
+            transform: none !important;
+            text-shadow: none !important;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
