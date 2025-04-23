@@ -1,40 +1,134 @@
 //background.js
 
-// Default settings
-let settingsPromise = new Promise((resolve) => {
-    chrome.storage.sync.get("settings", (data) => {
-        if (data.settings) {
-            console.debug('%c LatexToCalc [BG] › %cSettings loaded from storage', 'color:#2196F3;font-weight:bold', '');
-            resolve(data.settings);
-        } else {
-            const defaultSettings = {
-                TI_on: true,
-                SC_on: false,
-                constants_on: true,
-                coulomb_on: false,
-                e_on: false,
-                i_on: false,
-                g_on: false
-            };
-            chrome.storage.sync.set({ settings: defaultSettings }, () => {
-                console.debug('%c LatexToCalc [BG] › %cDefault settings saved to storage', 'color:#2196F3;font-weight:bold', '');
-                resolve(defaultSettings);
-            });
-        }
+// Initialize cachedSettings variable if it doesn't exist
+let cachedSettings = null;
+
+// Function to get the latest settings from storage
+function getSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.sync.get("settings", (data) => {
+            if (data.settings) {
+                cachedSettings = data.settings;
+                resolve(data.settings);
+            } else {
+                const defaultSettings = {
+                    TI_on: true,
+                    SC_on: false,
+                    constants_on: true,
+                    coulomb_on: false,
+                    e_on: false,
+                    i_on: false,
+                    g_on: false
+                };
+                chrome.storage.sync.set({ settings: defaultSettings }, () => {
+                    cachedSettings = defaultSettings;
+                    resolve(defaultSettings);
+                });
+            }
+        });
     });
+}
+
+// Initial settings load
+getSettings().then(() => {
+    console.debug('%c LatexToCalc [BG] › %cSettings loaded from storage', 'color:#2196F3;font-weight:bold', '');
 });
 
 // Create a global variable to hold the controller for the main operation
 let mainAbortController;
 let processStartTime;
-// Detailed timing measurements for the entire process
-let timingBreakdown = {};
+// Expanded timing breakdown with more detailed and granular measurements
+let timingBreakdown = {
+    keypress: 0,                   // When the shortcut key was pressed
+    contentScriptStart: 0,         // Start of content script execution
+    latexReceived: 0,              // When LaTeX was extracted and received
+    settingsLoadStart: 0,          // Start of settings load
+    settingsLoadEnd: 0,            // End of settings load
+    jsonSerializeStart: 0,         // Start of JSON serialization
+    jsonSerializeEnd: 0,           // End of JSON serialization
+    networkStart: 0,               // Start of network request
+    networkEnd: 0,                 // End of network request
+    parseStart: 0,                 // Start of response parsing
+    parseEnd: 0,                   // End of response parsing
+    tabQueryStart: 0,              // Start of tab query for clipboard
+    tabQueryEnd: 0,                // End of tab query for clipboard
+    clipboardPrepStart: 0,         // Start of clipboard preparation
+    clipboardPrepEnd: 0,           // End of clipboard preparation
+    clipboardWriteStart: 0,        // Start of clipboard write operation
+    clipboardWritten: 0            // When clipboard write completed
+};
 // Global cache for the most recent input and translated output
 let lastInputLatex = '';
 let lastOutputCalcSyntax = '';
 
 // Connection warmup flag to track if we've made the first request
 let connectionWarmedUp = false;
+
+// Update the logToActiveTab function to support passing console style arguments
+function logToActiveTab(message, type = 'info', skipContentLog = false, consoleArgs = []) {
+    // Only send to content script if not explicitly skipped
+    if (!skipContentLog) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs && tabs[0] && tabs[0].id) {
+                chrome.tabs.sendMessage(tabs[0].id, { 
+                    type: 'LOG_MESSAGE', 
+                    logType: type,
+                    message: message,
+                    consoleArgs: consoleArgs // Add any console style args
+                });
+            }
+        });
+    }
+    
+    // Always log to background console with appropriate style
+    const styles = {
+        info: 'color:#2196F3;font-weight:bold',
+        warn: 'color:#FF9800;font-weight:bold',
+        error: 'color:#F44336;font-weight:bold',
+        success: 'color:#4CAF50;font-weight:bold',
+        verbose: 'color:#607D8B;font-weight:bold'
+    };
+    
+    // Use the right console method based on type
+    if (type === 'verbose') {
+        console.debug(`%c LatexToCalc [BG] › %c${message}`, styles.verbose || styles.info, '', ...consoleArgs);
+    } else if (type === 'warn') {
+        console.warn(`%c LatexToCalc [BG] › %c${message}`, styles[type] || styles.info, '', ...consoleArgs);
+    } else if (type === 'error') {
+        console.error(`%c LatexToCalc [BG] › %c${message}`, styles[type] || styles.info, '', ...consoleArgs);
+    } else {
+        console.log(`%c LatexToCalc [BG] › %c${message}`, styles[type] || styles.info, '', ...consoleArgs);
+    }
+}
+
+// Add this helper function to format active settings
+function getActiveSettingsString(settings) {
+    const settingMappings = {
+        'TI_on': 'TI',
+        'SC_on': 'SC',
+        'constants_on': 'CONST',
+        'coulomb_on': 'k',
+        'e_on': 'e',
+        'i_on': 'i',
+        'g_on': 'g'
+    };
+    
+    // Filter only settings that are enabled (true)
+    const activeSettings = [];
+    for (const key in settings) {
+        if (settings[key] === true && settingMappings[key]) {
+            activeSettings.push(settingMappings[key]);
+        }
+    }
+    
+    return activeSettings.length > 0 ? activeSettings.join('+') : 'none';
+}
+
+// Update settings string generation while removing loading time display
+function logActiveSettings(settings) {
+    const activeSettingsStr = getActiveSettingsString(settings);
+    logToActiveTab(`Using settings: ${activeSettingsStr}`, 'info');
+}
 
 // Warm up the connection and translation engine on extension load
 async function warmupTranslationEngine() {
@@ -43,7 +137,7 @@ async function warmupTranslationEngine() {
     
     try {
         // Load settings before making the warmup request
-        const settings = await settingsPromise;
+        const settings = await getSettings();
         
         // Make an actual translation request with a simple expression to warm up the full pipeline
         const response = await fetch("https://otso.veistera.com/translate", { 
@@ -96,14 +190,40 @@ async function checkInternetConnection() {
     }
 }
 
-// Listen for settings update message from popup
+// Listen for settings update message from popup with improved logging
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === "SETTINGS_UPDATED") {
-        settings = request.settings;  // Update the settings with the new values
-        
-        // Optionally store them in chrome storage for persistence
-        chrome.storage.sync.set({ settings: settings }, () => {
-            console.debug('%c LatexToCalc [BG] › %cSettings saved in storage', 'color:#2196F3;font-weight:bold', '');
+        const oldSettings = cachedSettings ? {...cachedSettings} : null;
+        chrome.storage.sync.set({ settings: request.settings }, () => {
+            cachedSettings = request.settings;
+            
+            // Generate detailed diff of what changed
+            if (oldSettings) {
+                const changes = [];
+                for (const key in request.settings) {
+                    if (oldSettings[key] !== request.settings[key]) {
+                        const settingName = {
+                            'TI_on': 'TI mode',
+                            'SC_on': 'Scientific mode',
+                            'constants_on': 'Constants',
+                            'coulomb_on': 'Coulomb constant (k)',
+                            'e_on': 'Euler\'s number (e)',
+                            'i_on': 'Imaginary unit (i)',
+                            'g_on': 'Gravitational constant (g)'
+                        }[key] || key;
+                        
+                        changes.push(`${settingName}: ${oldSettings[key]} → ${request.settings[key]}`);
+                    }
+                }
+                
+                if (changes.length > 0) {
+                    logToActiveTab(`Settings updated: ${changes.join(', ')}`, 'info');
+                } else {
+                    logToActiveTab('Settings saved (no changes)', 'info');
+                }
+            } else {
+                logToActiveTab('Settings initialized', 'info');
+            }
         });
     }
 });
@@ -111,13 +231,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Listen for the command to translate clipboard content
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
-        console.log('%c LatexToCalc [BG] › %cTranslation command received', 'color:#2196F3;font-weight:bold', '');
+        logToActiveTab('Translation command received', 'verbose');
         processStartTime = performance.now();
+
+        // Reset all timing measurements with high precision timestamps
         timingBreakdown = {
-            keypress: processStartTime,
+            keypress: performance.now(),
+            contentScriptStart: 0,
             latexReceived: 0,
-            translationStart: 0,
-            translationEnd: 0,
+            settingsLoadStart: 0,
+            settingsLoadEnd: 0,
+            jsonSerializeStart: 0,
+            jsonSerializeEnd: 0,
+            networkStart: 0,
+            networkEnd: 0,
+            parseStart: 0,
+            parseEnd: 0,
+            tabQueryStart: 0,
+            tabQueryEnd: 0,
+            clipboardPrepStart: 0,
+            clipboardPrepEnd: 0,
+            clipboardWriteStart: 0,
             clipboardWritten: 0
         };
 
@@ -130,6 +264,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const activeTab = activeTabs[0];
         if (activeTab) {
+            timingBreakdown.contentScriptStart = performance.now();
             console.debug('%c LatexToCalc [BG] › %cExecuting content script in tab %c' + activeTab.id, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
             chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
@@ -163,8 +298,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         const latexContent = request.latexContent;
         timingBreakdown.latexReceived = performance.now();
         
-        // Print the original LaTeX before translation
-        console.log('%c LatexToCalc [BG] › %cSource LaTeX: %c' + latexContent, 'color:#2196F3;font-weight:bold', '', 'font-style:italic;color:#673AB7');
+        // Print the original LaTeX before translation (normal log)
+        logToActiveTab(`Source LaTeX: ${latexContent}`, 'info');
         
         // Log whether this is the first request after extension load
         if (!connectionWarmedUp) {
@@ -188,15 +323,27 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             return; // Skip translation since it's already cached
         }
 
-        // Use the current settings for translation, not the hardcoded ones
+        // Get the latest settings for each translation request
+        timingBreakdown.settingsLoadStart = performance.now();
+        const settings = await getSettings(); // Get fresh settings
+        timingBreakdown.settingsLoadEnd = performance.now();
+        
+        // Log active settings without showing load time
+        logActiveSettings(settings);
+        
+        // JSON serialization timing
+        timingBreakdown.jsonSerializeStart = performance.now();
+        const requestBody = JSON.stringify({ expression: latexContent, ...settings });
+        timingBreakdown.jsonSerializeEnd = performance.now();
+
+        // Start the translation after settings are loaded
         timingBreakdown.translationStart = performance.now();
-        const settings = await settingsPromise; // Wait for settings to be loaded
         let translationSuccessful = false;
 
         // First try the primary server with HTTPS
         try {
             const primaryAddress = "https://otso.veistera.com/translate";
-            console.debug('%c LatexToCalc [BG] › %cAttempting translation with primary server', 'color:#2196F3;font-weight:bold', '');
+            logToActiveTab('Attempting translation with primary server', 'verbose');
             
             const response = await fetchWithTimeout(primaryAddress, {
                 method: 'POST',
@@ -206,7 +353,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 },
                 mode: 'cors',
                 credentials: 'omit',
-                body: JSON.stringify({ expression: latexContent, ...settings })
+                body: requestBody
             }, 5000, !connectionWarmedUp); // Pass the cold start flag to fetchWithTimeout
             
             // Mark connection as warmed up after first successful request
@@ -218,18 +365,22 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             timingBreakdown.translationEnd = performance.now();
             const calculatorSyntax = data.result;
             
+            // Get result and copy to clipboard - measure each step precisely
+            timingBreakdown.tabQueryStart = performance.now();
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            timingBreakdown.tabQueryEnd = performance.now();
+
             copyTranslationToClipboard(calculatorSyntax, true); // Pass true to indicate timing should be measured
             translationSuccessful = true;
             lastInputLatex = latexContent;
             lastOutputCalcSyntax = calculatorSyntax;
-            console.log('%c LatexToCalc [BG] › %cTranslated text: %c' + calculatorSyntax, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold;color:#009688');
+            logToActiveTab(`Translated: ${calculatorSyntax}`, 'success');
             
-            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const activeTab = activeTabs[0];
             if (activeTab) {
                 chrome.tabs.sendMessage(activeTab.id, { 
                     type: 'TRANSLATION_COMPLETED',
-                    totalTime: Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                    totalTime: round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
                 });
             }
             return;
@@ -257,7 +408,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     },
                     mode: 'cors',
                     credentials: 'omit',
-                    body: JSON.stringify({ expression: latexContent, ...settings })
+                    body: requestBody
                 }, 5000).then(async (response) => {
                     if (!response.ok) throw new Error(`Bad response from ${serverUrl}`);
                     const data = await response.json();
@@ -285,7 +436,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             if (activeTab) {
                 chrome.tabs.sendMessage(activeTab.id, { 
                     type: 'TRANSLATION_COMPLETED',
-                    totalTime: Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                    totalTime: round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
                 });
             }
             return;
@@ -309,54 +460,113 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     }
 });
 
-// Function to log the complete timing breakdown
+// Simplify the timing formatting to consistently use 1 decimal place
+
+// Helper functions for formatting timing values - simplified to always use 1 decimal
+function round(value) {
+    return Math.round(value * 10) / 10;
+}
+
+function padStart(num) {
+    const str = num.toFixed(1);
+    return str.padStart(5, ' ');
+}
+
+function padPercent(num) {
+    const str = num.toFixed(1);
+    return str.padStart(4, ' ');
+}
+
+// Update the logTimingBreakdown function to use simplified formatting
 function logTimingBreakdown() {
     // Only log if we have complete timing information
     if (!timingBreakdown.clipboardWritten) {
-        console.debug('%c LatexToCalc [BG] › %cTiming breakdown incomplete, waiting for clipboard operation', 'color:#2196F3;font-weight:bold', '');
+        logToActiveTab('Timing breakdown incomplete, waiting for clipboard operation', 'verbose');
         return;
     }
     
-    const total = Math.round(timingBreakdown.clipboardWritten - timingBreakdown.keypress);
-    const latexExtraction = Math.round(timingBreakdown.latexReceived - timingBreakdown.keypress);
-    const translation = Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart);
-    const clipboardWrite = Math.round(timingBreakdown.clipboardWritten - timingBreakdown.translationEnd);
+    // Calculate durations with 1 decimal place
+    const total = round(timingBreakdown.clipboardWritten - timingBreakdown.keypress);
+    const extraction = round(timingBreakdown.latexReceived - timingBreakdown.keypress);
+    const settingsLoad = round(timingBreakdown.settingsLoadEnd - timingBreakdown.settingsLoadStart);
+    const jsonSerialize = round(timingBreakdown.jsonSerializeEnd - timingBreakdown.jsonSerializeStart);
+    const network = round(timingBreakdown.networkEnd - timingBreakdown.networkStart);
+    const parsing = round(timingBreakdown.parseEnd - timingBreakdown.parseStart);
+    const tabQuery = round(timingBreakdown.tabQueryEnd - timingBreakdown.tabQueryStart);
+    const clipboardPrep = round(timingBreakdown.clipboardPrepEnd - timingBreakdown.clipboardPrepStart);
+    const clipboardWrite = round(timingBreakdown.clipboardWritten - timingBreakdown.clipboardWriteStart);
     
-    // Ensure all values are positive
-    if (total <= 0 || latexExtraction < 0 || translation < 0 || clipboardWrite < 0) {
-        console.warn('%c LatexToCalc [BG] › %cInvalid timing detected, skipping breakdown', 'color:#2196F3;font-weight:bold', 'color:#FF9800');
+    // Ensure all values are valid
+    if (total <= 0) {
+        logToActiveTab('Invalid timing detected, skipping breakdown', 'warn');
         return;
     }
     
-    // Calculate percentages
-    const latexExtractionPercent = Math.round(latexExtraction/total*100);
-    const translationPercent = Math.round(translation/total*100);
-    const clipboardWritePercent = Math.round(clipboardWrite/total*100);
+    // Calculate percentages (1 decimal place)
+    const extractPercent = round((extraction/total)*100);
+    const settingsPercent = round((settingsLoad/total)*100);
+    const jsonPercent = round((jsonSerialize/total)*100);
+    const networkPercent = round((network/total)*100);
+    const parsePercent = round((parsing/total)*100);
+    const tabQueryPercent = round((tabQuery/total)*100);
+    const prepPercent = round((clipboardPrep/total)*100);
+    const writePercent = round((clipboardWrite/total)*100);
     
     // Get color styles based on percentage contribution
-    const latexExtractionColor = getColorForPercentage(latexExtractionPercent);
-    const translationColor = getColorForPercentage(translationPercent);
-    const clipboardWriteColor = getColorForPercentage(clipboardWritePercent);
+    const extractColor = getColorForPercentage(extractPercent);
+    const settingsColor = getColorForPercentage(settingsPercent);
+    const jsonColor = getColorForPercentage(jsonPercent);
+    const networkColor = getColorForPercentage(networkPercent);
+    const parseColor = getColorForPercentage(parsePercent);
+    const tabQueryColor = getColorForPercentage(tabQueryPercent);
+    const prepColor = getColorForPercentage(prepPercent);
+    const writeColor = getColorForPercentage(writePercent);
     
-    // Log with colored millisecond values
+    // Format for console output with colors - ensure proper line breaks with \n
+    const consoleMessage = `⏱ Timing breakdown (total: ${total.toFixed(1)} ms):\n` +
+        `    - LaTeX extraction: %c${padStart(extraction)} ms%c (${padPercent(extractPercent)}%)\n` +
+        `    - Settings load:    %c${padStart(settingsLoad)} ms%c (${padPercent(settingsPercent)}%)\n` +
+        `    - JSON serialize:   %c${padStart(jsonSerialize)} ms%c (${padPercent(jsonPercent)}%)\n` +
+        `    - Network request:  %c${padStart(network)} ms%c (${padPercent(networkPercent)}%)\n` +
+        `    - Response parsing: %c${padStart(parsing)} ms%c (${padPercent(parsePercent)}%)\n` +
+        `    - Tab query:        %c${padStart(tabQuery)} ms%c (${padPercent(tabQueryPercent)}%)\n` +
+        `    - Clipboard prep:   %c${padStart(clipboardPrep)} ms%c (${padPercent(prepPercent)}%)\n` +
+        `    - Clipboard write:  %c${padStart(clipboardWrite)} ms%c (${padPercent(writePercent)}%)`;
+    
+    // Create array of console style arguments
+    const consoleStyleArgs = [
+        extractColor, "color: inherit",
+        settingsColor, "color: inherit",
+        jsonColor, "color: inherit",
+        networkColor, "color: inherit",
+        parseColor, "color: inherit",
+        tabQueryColor, "color: inherit",
+        prepColor, "color: inherit",
+        writeColor, "color: inherit"
+    ];
+    
+    // Log to background console
     console.debug(
-        `%c LatexToCalc [BG] › %c⏱ Timing breakdown (total: ${total} ms):
-    - LaTeX extraction: %c${latexExtraction.toString().padStart(3)} ms%c (${latexExtractionPercent}%)
-    - Translation:      %c${translation.toString().padStart(3)} ms%c (${translationPercent}%)
-    - Clipboard:        %c${clipboardWrite.toString().padStart(3)} ms%c (${clipboardWritePercent}%)`,
+        `%c LatexToCalc [BG] › %c${consoleMessage}`,
         'color:#2196F3;font-weight:bold', '',
-        // Style arguments for each %c placeholder
-        latexExtractionColor, "color: inherit",
-        translationColor, "color: inherit",
-        clipboardWriteColor, "color: inherit"
+        ...consoleStyleArgs
     );
     
-    // Send timing to the active tab for popup display
+    // Send to content script with styles - format differently for content script
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
         if (tabs.length > 0) {
+            // Send the full message with style args
+            chrome.tabs.sendMessage(tabs[0].id, { 
+                type: 'LOG_MESSAGE',
+                logType: 'verbose',
+                message: consoleMessage,
+                consoleArgs: consoleStyleArgs
+            });
+            
+            // Also send the total time for the popup display (use round() for consistent 1 decimal)
             chrome.tabs.sendMessage(tabs[0].id, { 
                 type: 'TRANSLATION_COMPLETED',
-                totalTime: total
+                totalTime: round(total)
             });
         }
     });
@@ -379,16 +589,23 @@ chrome.runtime.onInstalled.addListener(() => {
     chrome.tabs.create({ url: urlToOpen });
 });
 
-// Function to inject the clipboard copy operation into the active tab
+// Update copyTranslationToClipboard to track more detailed clipboard timing
 function copyTranslationToClipboard(text, trackTiming = false) {
+    timingBreakdown.clipboardPrepStart = performance.now();
+    
     // Query the active tab in the current window
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs.length === 0) {
             console.error('%c LatexToCalc [BG] › %cNo active tab found', 'color:#2196F3;font-weight:bold', 'color:#F44336');
             return;
         }
-
+        
+        timingBreakdown.clipboardPrepEnd = performance.now();
         console.debug('%c LatexToCalc [BG] › %cCopying translation to clipboard', 'color:#2196F3;font-weight:bold', '');
+        
+        // Track the clipboard write operation start time
+        timingBreakdown.clipboardWriteStart = performance.now();
+        
         // Inject and execute the performClipboardCopy function in the active tab
         chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
@@ -421,6 +638,7 @@ function performClipboardCopy(text, trackTiming) {
     const startTime = performance.now();
     return navigator.clipboard.writeText(text).then(() => {
         const endTime = performance.now();
+        // We can't use logToActiveTab here since this runs in the content script context
         console.log('%c LatexToCalc [BG] › %cCopied to clipboard: %c' + text, 'color:#2196F3;font-weight:bold', '', 'font-style:italic;font-weight:bold');
         return trackTiming ? { written: true, time: endTime } : true;
     }).catch(err => {
@@ -429,7 +647,7 @@ function performClipboardCopy(text, trackTiming) {
     });
 }
 
-// Function to send fetch request with timeout
+// Update fetchWithTimeout for consistent precision
 async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
     const fetchStartTime = performance.now();
     const controller = new AbortController();
@@ -438,15 +656,25 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
     try {
         // Add cold emoji if this is a cold start
         const coldIndicator = isColdStart ? " ❄️" : "";
-        console.debug('%c LatexToCalc [BG] › %cStarting fetch to %c' + url + coldIndicator, 'color:#2196F3;font-weight:bold', '', 'font-style:italic');
+        logToActiveTab(`Starting fetch to ${url}${coldIndicator}`, 'verbose');
         
+        // Track actual network time with high precision
+        timingBreakdown.networkStart = performance.now();
         const response = await fetch(url, { ...options, signal: controller.signal });
+        timingBreakdown.networkEnd = performance.now();
         
-        // Get the response body as text and parse it into JSON 
+        // Track JSON parsing time with high precision
+        timingBreakdown.parseStart = performance.now();
         const responseText = await response.text();
+        timingBreakdown.parseEnd = performance.now();
+        
         const fetchEndTime = performance.now();
-        const fetchDuration = Math.round(fetchEndTime - fetchStartTime);
-        console.debug('%c LatexToCalc [BG] › %cFetch completed in %c' + fetchDuration + ' ms', 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
+        const fetchDuration = round(fetchEndTime - fetchStartTime);
+        const networkTime = round(timingBreakdown.networkEnd - timingBreakdown.networkStart);
+        const parseTime = round(timingBreakdown.parseEnd - timingBreakdown.parseStart);
+        
+        // Simplified logging with 1 decimal place
+        logToActiveTab(`Fetch completed in ${fetchDuration.toFixed(1)} ms (network: ${networkTime.toFixed(1)}ms, parse: ${parseTime.toFixed(1)}ms)`, 'success', true);
         
         // Create a new response with the parsed text
         return new Response(responseText, {
@@ -455,8 +683,8 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
             statusText: response.statusText
         });
     } catch (error) {
-        const fetchDuration = Math.round(performance.now() - fetchStartTime);
-        console.debug('%c LatexToCalc [BG] › %cFetch failed after %c' + fetchDuration + ' ms: %c' + error, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold', 'color:#F44336');
+        const fetchDuration = round(performance.now() - fetchStartTime);
+        logToActiveTab(`Fetch failed after ${fetchDuration.toFixed(1)} ms: ${error}`, 'error');
         throw error;
     } finally {
         clearTimeout(timeoutId);

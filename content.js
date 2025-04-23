@@ -21,6 +21,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.type === 'SHOW_ERROR_POPUP') {
         showPopup('red', request.message + ' Meanwhile, visit: ', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
         console.warn('%c LatexToCalc › %cError: %c' + request.message, 'color:#4CAF50;font-weight:bold', '', 'color:#F44336');
+    } else if (request.type === 'LOG_MESSAGE') {
+        // Log messages from background script to content page console
+        const styleMap = {
+            'info': 'color:#2196F3',
+            'warn': 'color:#FF9800',
+            'error': 'color:#F44336',
+            'success': 'color:#4CAF50',
+            'verbose': 'color:#607D8B'
+        };
+        const style = styleMap[request.logType] || styleMap.info;
+        
+        // Special handling for timing breakdowns to support colors
+        if (request.message && request.message.startsWith('⏱ Timing breakdown')) {
+            // Get the console arguments array
+            const consoleArgs = request.consoleArgs || [];
+            // Start with the prefix and style
+            const args = [
+                `%c LatexToCalc [BG] › %c${request.message}`,
+                `${style};font-weight:bold`,
+                ''
+            ];
+            // Add all color arguments from background
+            consoleArgs.forEach(arg => args.push(arg));
+            
+            // Pass all arguments to console.debug
+            console.debug.apply(console, args);
+            return;
+        }
+        
+        // Regular logging for other messages
+        if (request.logType === 'verbose') {
+            console.debug(`%c LatexToCalc [BG] › %c${request.message}`, `${style};font-weight:bold`, '');
+        } else if (request.logType === 'warn') {
+            console.warn(`%c LatexToCalc [BG] › %c${request.message}`, `${style};font-weight:bold`, '');
+        } else if (request.logType === 'error') {
+            console.error(`%c LatexToCalc [BG] › %c${request.message}`, `${style};font-weight:bold`, '');
+        } else {
+            console.log(`%c LatexToCalc [BG] › %c${request.message}`, `${style};font-weight:bold`, '');
+        }
     }
 });
 
