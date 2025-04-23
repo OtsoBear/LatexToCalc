@@ -113,29 +113,76 @@ function removeWhiteSpace(str) {
     return str ? str.replace(/\s+/g, '') : '';
 }
 
-// Utility to check LaTeX alt text from document (iframe or not)
-function findLatexAlt(doc, prioritizeTextSelection = true) {
-    // First check if there is any actual selection
-    const selection = doc.getSelection();
-    if (selection && selection.rangeCount > 0) {
+/**
+ * Collection of specialized LaTeX seekers
+ * Each function searches for LaTeX content in a specific way
+ */
+const LatexFinder = {
+    /**
+     * Check if selected text is part of an equation
+     */
+    checkSelectedTextInEquation: function(doc) {
+        const selection = doc.getSelection();
+        const selectedText = selection?.toString().trim();
+        
+        if (!selectedText) return null;
+        
+        // Check if this selection is part of any LaTeX image alt text
+        const allImages = Array.from(doc.querySelectorAll('img[alt*="\\"]'));
+        for (const img of allImages) {
+            if (img.alt && img.alt.includes(selectedText)) {
+                return { source: 'partial equation selection', content: selectedText };
+            }
+        }
+        
+        return null;
+    },
+    
+    /**
+     * Check for focused/active equations
+     */
+    checkFocusedEquations: function(doc) {
+        // Direct equation focus checks
+        const focusedEquation = doc.querySelector('img.equation.active, img.equation:focus, img.equation.focused, img:focus.equation, img.selected.equation');
+        if (focusedEquation?.alt?.includes('\\')) {
+            return { source: 'focused equation', content: focusedEquation.alt };
+        }
+        
+        // General focused image check
+        const focusedImg = doc.querySelector('img:focus, img.active, img.focused, img.selected');
+        if (focusedImg?.alt?.includes('\\')) {
+            return { source: 'focused image', content: focusedImg.alt };
+        }
+        
+        return null;
+    },
+    
+    /**
+     * Check for selection containing images with LaTeX
+     */
+    checkSelectionContent: function(doc) {
+        const selection = doc.getSelection();
+        if (!selection || selection.rangeCount === 0) return null;
+        
         const range = selection.getRangeAt(0);
         
-        // Check if selection contains both text and images
+        // Combined text and image content
         const combinedContent = extractCombinedContent(range);
         if (combinedContent) {
             return combinedContent;
         }
         
+        // Direct selection checks
         const container = range.commonAncestorContainer;
         
-        // Check if selection directly contains an img
+        // Direct image selection
         if (container.nodeType === 1 && container.tagName === 'IMG') {
             if (container.alt && container.alt.includes('\\')) {
                 return { source: 'selected image', content: container.alt };
             }
         }
         
-        // Check if selection parent contains an img
+        // Parent image selection
         const parentElement = container.parentElement;
         if (parentElement && parentElement.tagName === 'IMG') {
             if (parentElement.alt && parentElement.alt.includes('\\')) {
@@ -143,7 +190,7 @@ function findLatexAlt(doc, prioritizeTextSelection = true) {
             }
         }
         
-        // Check if image is inside selection
+        // Images contained within selection
         const selectedImages = range.cloneContents().querySelectorAll('img');
         if (selectedImages && selectedImages.length > 0) {
             for (const img of selectedImages) {
@@ -153,133 +200,175 @@ function findLatexAlt(doc, prioritizeTextSelection = true) {
             }
         }
         
-        // Check if selection is near an image (partial selection case)
-        const nearbyImg = parentElement?.querySelector('img');
-        if (nearbyImg && nearbyImg.alt && nearbyImg.alt.includes('\\')) {
-            return { source: 'image near selection', content: nearbyImg.alt };
-        }
-    }
+        return null;
+    },
     
-    // 1. Check specifically for rich text editor images with equation class
-    const richTextEditors = doc.querySelectorAll('.rich-text-editor');
-    for (const editor of richTextEditors) {
-        // First check if any image has focus or selection
-        const focusedImg = editor.querySelector('img:focus, img.selected, img.active, img.focused');
-        if (focusedImg?.alt?.includes('\\')) {
-            return { source: 'focused rich text editor image', content: focusedImg.alt };
+    /**
+     * Check specific rich text editors
+     */
+    checkRichTextEditors: function(doc) {
+        const richTextEditors = doc.querySelectorAll('.rich-text-editor');
+        for (const editor of richTextEditors) {
+            const focusedImg = editor.querySelector('img:focus, img.selected, img.active, img.focused');
+            if (focusedImg?.alt?.includes('\\')) {
+                return { source: 'focused rich text editor image', content: focusedImg.alt };
+            }
         }
         
-        // Then check for any equation class images
-        const equationImages = editor.querySelectorAll('img.equation');
-        if (equationImages.length > 0) {
-            // If multiple equations, try to find one that might be in focus
-            // by checking how close it is to the current selection
-            if (selection && selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                let closestImg = null;
-                let minDistance = Infinity;
-                
-                for (const img of equationImages) {
-                    try {
-                        // Calculate rough proximity to the current selection
-                        const imgRect = img.getBoundingClientRect();
-                        const rangeRect = range.getBoundingClientRect();
-                        const distance = Math.abs(imgRect.left - rangeRect.left) + 
-                                        Math.abs(imgRect.top - rangeRect.top);
-                        
-                        if (distance < minDistance && img.alt?.includes('\\')) {
-                            minDistance = distance;
-                            closestImg = img;
-                        }
-                    } catch (e) {
-                        // Skip if can't get bounding rect
-                        continue;
-                    }
-                }
-                
-                if (closestImg) {
-                    return { source: 'closest equation to selection', content: closestImg.alt };
-                }
-            }
-            
-            // If we can't find the closest, just use the first one
-            const firstEquation = equationImages[0];
-            if (firstEquation.alt?.includes('\\')) {
-                return { source: 'first equation in rich text', content: firstEquation.alt };
-            }
-        }
-    }
-
-    // Continue with the existing checks...
+        return null;
+    },
     
-    // 2. Check Abitti editor container
-    const abitti = doc.querySelector('div.abitti-editor-container.rich-text-editor.rich-text-focused');
-    const abittiImg = abitti?.querySelector('img');
-    if (abittiImg?.alt?.includes('\\')) {
-        return { source: 'Abitti editor image', content: abittiImg.alt };
-    }
+    /**
+     * Check for hidden images (often indicates focus in some editors)
+     */
+    checkHiddenImages: function(doc) {
+        const hiddenImages = Array.from(doc.querySelectorAll('img'));
+        for (const img of hiddenImages) {
+            if (img.style.display === 'none' && img.alt?.includes('\\')) {
+                return { source: 'hidden focused image', content: img.alt };
+            }
+            // Also check computed style in case it's set via CSS
+            if (window.getComputedStyle(img).display === 'none' && img.alt?.includes('\\')) {
+                return { source: 'hidden focused image (CSS)', content: img.alt };
+            }
+        }
+        
+        return null;
+    },
+    
+    /**
+     * Check specific editor types like Abitti
+     */
+    checkSpecificEditors: function(doc) {
+        // Abitti editor container
+        const abitti = doc.querySelector('div.abitti-editor-container.rich-text-editor.rich-text-focused');
+        const abittiImg = abitti?.querySelector('img');
+        if (abittiImg?.alt?.includes('\\')) {
+            return { source: 'Abitti editor image', content: abittiImg.alt };
+        }
 
-    // 3. Check for active equation image
-    const eqImg = doc.querySelector('img.equation.active');
-    if (eqImg?.alt?.includes('\\')) {
-        return { source: 'active equation image', content: eqImg.alt };
+        // Active equation image
+        const eqImg = doc.querySelector('img.equation.active');
+        if (eqImg?.alt?.includes('\\')) {
+            return { source: 'active equation image', content: eqImg.alt };
+        }
+        
+        return null;
+    },
+    
+    /**
+     * Check elements with "focused" class
+     */
+    checkFocusedElements: function(doc) {
+        const focusedElems = Array.from(doc.querySelectorAll('[class*="focused"]'));
+        for (const el of focusedElems) {
+            const img = el.querySelector('img');
+            if (img?.alt?.includes('\\')) {
+                return { source: 'focused element', content: img.alt };
+            }
+        }
+        
+        return null;
+    },
+    
+    /**
+     * Check for plain text selection
+     */
+    checkPlainTextSelection: function(doc) {
+        const selectedText = getSelectedText(doc);
+        if (selectedText) {
+            return { source: 'text selection', content: selectedText };
+        }
+        
+        return null;
     }
+};
 
-    // 4. Search elements with "focused" class and image children
-    const focusedElems = Array.from(doc.querySelectorAll('[class*="focused"]'));
-    for (const el of focusedElems) {
-        const img = el.querySelector('img');
-        if (img?.alt?.includes('\\')) {
-            return { source: 'focused element', content: img.alt };
+/**
+ * Find LaTeX content in the document using various strategies
+ */
+function findLatexAlt(doc, prioritizeTextSelection = true) {
+    let result;
+    
+    // First check if selected text is part of an equation
+    result = LatexFinder.checkSelectedTextInEquation(doc);
+    if (result) {
+        console.log('%c LatexToCalc › %cFound selected text within equation', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
+    
+    // If prioritizing text selection, check for it early
+    if (prioritizeTextSelection) {
+        result = LatexFinder.checkPlainTextSelection(doc);
+        if (result) {
+            console.log('%c LatexToCalc › %cFound text selection', 'color:#4CAF50;font-weight:bold', '');
+            return result;
         }
     }
-
+    
+    // Check focused equations
+    result = LatexFinder.checkFocusedEquations(doc);
+    if (result) return result;
+    
+    // Check selection content
+    result = LatexFinder.checkSelectionContent(doc);
+    if (result) return result;
+    
+    // Check editor contexts
+    result = LatexFinder.checkRichTextEditors(doc);
+    if (result) return result;
+    
+    // Check hidden images (sanomapro style)
+    result = LatexFinder.checkHiddenImages(doc);
+    if (result) return result;
+    
+    // Check specific editor types
+    result = LatexFinder.checkSpecificEditors(doc);
+    if (result) return result;
+    
+    // Check focused elements
+    result = LatexFinder.checkFocusedElements(doc);
+    if (result) return result;
+    
+    // If we're not prioritizing text selection, check it as a last resort
+    if (!prioritizeTextSelection) {
+        result = LatexFinder.checkPlainTextSelection(doc);
+        if (result) {
+            console.log('%c LatexToCalc › %cFound text selection (fallback)', 'color:#4CAF50;font-weight:bold', '');
+            return result;
+        }
+    }
+    
     return null;
 }
 
-// Function to get the selected text, clipboard text, or LaTeX alt text from images (iframe or not)
+/**
+ * Main function to get LaTeX content from the page
+ */
 async function getTextFromIframe() {
     try {
-        let latexText = '';
-
-        // Check for iframe first
+        // ----- Check iframe content -----
         const iframe = document.querySelector('iframe[title="Kaavaeditori"]');
         if (iframe) {
             console.log('%c LatexToCalc › %cFound equation editor iframe', 'color:#4CAF50;font-weight:bold', '');
-
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
 
-            // Check if anything is selected in iframe
-            const iframeSelection = getSelectedText(iframeDoc);
-            if (iframeSelection) {
-                console.log('%c LatexToCalc › %cFound selected text in iframe', 'color:#4CAF50;font-weight:bold', '');
-                return iframeSelection;
-            } else {
-                console.log('%c LatexToCalc › %cNo selection in iframe', 'color:#888;font-weight:bold', 'color:#666');
-            }
-
-            // If nothing selected, check for LaTeX in image alt text in iframe
-            const result = findLatexAlt(iframeDoc, false);
+            // In iframes we don't prioritize text selection over equations
+            const result = findLatexAlt(iframeDoc, false); 
             if (result) {
                 console.log('%c LatexToCalc › %cFound LaTeX from ' + result.source, 'color:#4CAF50;font-weight:bold', '');
                 return result.content;
-            } else {
-                console.log('%c LatexToCalc › %cNo image alt text in iframe', 'color:#888;font-weight:bold', 'color:#666');
             }
-        } else {
-            console.log('%c LatexToCalc › %cNo equation editor iframe found', 'color:#888;font-weight:bold', 'color:#666');
         }
 
-        // Check main document if no iframe match
+        // ----- Check main document content -----
         const mainResult = findLatexAlt(document, true);
         if (mainResult) {
             console.log('%c LatexToCalc › %cFound LaTeX from ' + mainResult.source, 'color:#4CAF50;font-weight:bold', '');
             return mainResult.content;
-        } else {
-            console.log('%c LatexToCalc › %cNo image alt text in main document', 'color:#888;font-weight:bold', 'color:#666');
         }
 
-        // Check for specific equation editor div
+        // ----- Check special equation editor elements -----
         const equationEditorDiv = document.querySelector('div[data-testid="equation-editor"]');
         if (equationEditorDiv) {
             console.log('%c LatexToCalc › %cFound equation editor div', 'color:#4CAF50;font-weight:bold', '');
@@ -296,31 +385,22 @@ async function getTextFromIframe() {
                 console.log('%c LatexToCalc › %cReturning full data-latex attribute', 'color:#4CAF50;font-weight:bold', '');
                 return editorValue;
             }
-
-            console.log('%c LatexToCalc › %cNo useful data-latex attribute found', 'color:#888;font-weight:bold', 'color:#666');
-        } else {
-            console.log('%c LatexToCalc › %cNo equation editor div found', 'color:#888;font-weight:bold', 'color:#666');
         }
 
-        // Try selected text from main document
-        const selectedText = getSelectedText(document);
-        if (selectedText) {
-            console.log('%c LatexToCalc › %cSelected text found in main document', 'color:#4CAF50;font-weight:bold', '');
-            return selectedText;
-        } else {
-            console.log('%c LatexToCalc › %cNo selected text in main document', 'color:#888;font-weight:bold', 'color:#666');
+        // ----- Try clipboard as last resort -----
+        try {
+            const clipboardText = await navigator.clipboard.readText();
+            if (clipboardText) {
+                console.log('%c LatexToCalc › %cFound text from clipboard', 'color:#4CAF50;font-weight:bold', '');
+                return clipboardText;
+            }
+        } catch (clipError) {
+            console.warn('%c LatexToCalc › %cClipboard access denied', 'color:#FF9800;font-weight:bold', '');
         }
-
-        // Final fallback: clipboard
-        const clipboardText = await navigator.clipboard.readText();
-        if (clipboardText) {
-            console.log('%c LatexToCalc › %cFound text from clipboard', 'color:#4CAF50;font-weight:bold', '');
-            return clipboardText;
-        } else {
-            console.warn('%c LatexToCalc › %cClipboard is empty or inaccessible', 'color:#FF9800;font-weight:bold', '');
-            showPopup('red', 'No LaTeX found in iframe, selected text, or clipboard.', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
-            return '';
-        }
+        
+        // Nothing found
+        showPopup('red', 'No LaTeX found in iframe, selected text, or clipboard.', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
+        return '';
     } catch (error) {
         console.error('%c LatexToCalc › %cError while fetching text:', 'color:#F44336;font-weight:bold', '', error);
         return '';
