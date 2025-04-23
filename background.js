@@ -423,7 +423,7 @@ function performClipboardCopy(text, trackTiming) {
     const startTime = performance.now();
     return navigator.clipboard.writeText(text).then(() => {
         const endTime = performance.now();
-        console.log(`Text copied to clipboard in ${Math.round(endTime - startTime)} ms`);
+        console.log(`Text copied to clipboard`);
         return trackTiming ? { written: true, time: endTime } : true;
     }).catch(err => {
         console.error('Failed to copy text:', err);

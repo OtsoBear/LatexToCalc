@@ -1,9 +1,23 @@
+/**
+ * LatexToCalc Chrome Extension - Content Script
+ * 
+ * This content script extracts LaTeX equations from web pages using multiple detection
+ * strategies. It can find LaTeX from text selections, image alt attributes, focused elements,
+ * rich text editors, and specialized equation editors. The script prioritizes different
+ * sources based on context and provides visual feedback via custom popups.
+ * 
+ * The extracted LaTeX is sent to the extension's background script for translation
+ * to calculator syntax and then copied to the clipboard for use.
+ */
+
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.message === 'Translated') {
         const totalTimeMs = request.totalTime;
-        const timeDisplay = totalTimeMs ? ` (${totalTimeMs} ms)` : '';
-        showPopup('green', `Translated and copied to clipboard${timeDisplay}.`);
+        if (totalTimeMs) {
+            console.log(`%c LatexToCalc › %cTranslation completed in ${totalTimeMs} ms`, 'color:#4CAF50;font-weight:bold', '');
+        }
+        showPopup('green', 'Translated and copied to clipboard.');
     } else if (request.type === 'SHOW_POPUP') {
         showPopup('red', request.message + ' Meanwhile, visit: ', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
         console.warn('Error:', request.message);
@@ -308,27 +322,45 @@ function findLatexAlt(doc, prioritizeTextSelection = true) {
     
     // Check focused equations
     result = LatexFinder.checkFocusedEquations(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound focused equation', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // Check selection content
     result = LatexFinder.checkSelectionContent(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound content in selection', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // Check editor contexts
     result = LatexFinder.checkRichTextEditors(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound content in rich text editor', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // Check hidden images (sanomapro style)
     result = LatexFinder.checkHiddenImages(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound content in hidden image', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // Check specific editor types
     result = LatexFinder.checkSpecificEditors(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound content in specific editor', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // Check focused elements
     result = LatexFinder.checkFocusedElements(doc);
-    if (result) return result;
+    if (result) {
+        console.log('%c LatexToCalc › %cFound content in focused element', 'color:#4CAF50;font-weight:bold', '');
+        return result;
+    }
     
     // If we're not prioritizing text selection, check it as a last resort
     if (!prioritizeTextSelection) {
