@@ -4,7 +4,7 @@
 let settingsPromise = new Promise((resolve) => {
     chrome.storage.sync.get("settings", (data) => {
         if (data.settings) {
-            console.debug("Settings loaded from storage:", data.settings);
+            console.debug('%c LatexToCalc [BG] › %cSettings loaded from storage', 'color:#2196F3;font-weight:bold', '');
             resolve(data.settings);
         } else {
             const defaultSettings = {
@@ -17,7 +17,7 @@ let settingsPromise = new Promise((resolve) => {
                 g_on: false
             };
             chrome.storage.sync.set({ settings: defaultSettings }, () => {
-                console.debug("Default settings saved to storage:", defaultSettings);
+                console.debug('%c LatexToCalc [BG] › %cDefault settings saved to storage', 'color:#2196F3;font-weight:bold', '');
                 resolve(defaultSettings);
             });
         }
@@ -30,16 +30,16 @@ let processStartTime;
 // Detailed timing measurements for the entire process
 let timingBreakdown = {};
 // Global cache for the most recent input and translated output
-let lastInputText = '';
-let lastOutputText = '';
+let lastInputLatex = '';
+let lastOutputCalcSyntax = '';
 
 // Connection warmup flag to track if we've made the first request
 let connectionWarmedUp = false;
 
 // Warm up the connection and translation engine on extension load
-async function warmupConnection() {
+async function warmupTranslationEngine() {
     const warmupStartTime = performance.now();
-    console.debug("Starting translation engine warmup...");
+    console.debug('%c LatexToCalc [BG] › %cStarting translation engine warmup...', 'color:#2196F3;font-weight:bold', '');
     
     try {
         // Load settings before making the warmup request
@@ -65,23 +65,23 @@ async function warmupConnection() {
             await response.json(); // Process the response to complete the warmup
             connectionWarmedUp = true;
             const warmupTime = Math.round(performance.now() - warmupStartTime);
-            console.debug(`Translation engine connection warmed up in ${warmupTime} ms`);
+            console.debug('%c LatexToCalc [BG] › %cTranslation engine warmed up in %c' + warmupTime + ' ms', 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
         } else {
             throw new Error("Server returned an error");
         }
     } catch (error) {
         const failTime = Math.round(performance.now() - warmupStartTime);
-        console.debug(`Translation engine warmup failed after ${failTime} ms:`, error);
+        console.debug('%c LatexToCalc [BG] › %cTranslation engine warmup failed after %c' + failTime + ' ms: %c' + error, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold', 'color:#F44336');
     }
 }
 
 // Call the warmup function when the extension loads
 // We'll delay it slightly to ensure settings are loaded
-setTimeout(warmupConnection, 500);
+setTimeout(warmupTranslationEngine, 500);
 
 // Function to send a message to the active tab to show the popup
-function showPopupInTab(tabId, message) {
-    chrome.tabs.sendMessage(tabId, { type: 'SHOW_POPUP', message: message });
+function showErrorPopupInTab(tabId, message) {
+    chrome.tabs.sendMessage(tabId, { type: 'SHOW_ERROR_POPUP', message: message });
 }
 
 // Function to check if the user has an active internet connection
@@ -91,20 +91,19 @@ async function checkInternetConnection() {
         const response = await fetch('https://ipv4.icanhazip.com/', { method: 'GET' });
         return response.ok;
     } catch (error) {
-        console.error('Network error:', error);
+        console.error('%c LatexToCalc [BG] › %cNetwork error: %c' + error, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
         return false;
     }
 }
 
 // Listen for settings update message from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "UPDATE_SETTINGS") {
+    if (request.type === "SETTINGS_UPDATED") {
         settings = request.settings;  // Update the settings with the new values
-        console.log("Settings updated in background:", settings);
         
         // Optionally store them in chrome storage for persistence
         chrome.storage.sync.set({ settings: settings }, () => {
-            console.log("Settings saved in storage.");
+            console.debug('%c LatexToCalc [BG] › %cSettings saved in storage', 'color:#2196F3;font-weight:bold', '');
         });
     }
 });
@@ -112,11 +111,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Listen for the command to translate clipboard content
 chrome.commands.onCommand.addListener(async (command) => {
     if (command === 'translate-clipboard') {
-        console.log("Translation command received.");
+        console.log('%c LatexToCalc [BG] › %cTranslation command received', 'color:#2196F3;font-weight:bold', '');
         processStartTime = performance.now();
         timingBreakdown = {
             keypress: processStartTime,
-            textReceived: 0,
+            latexReceived: 0,
             translationStart: 0,
             translationEnd: 0,
             clipboardWritten: 0
@@ -124,26 +123,28 @@ chrome.commands.onCommand.addListener(async (command) => {
 
         if (mainAbortController) {
             mainAbortController.abort();
+            console.debug('%c LatexToCalc [BG] › %cAborted previous translation request', 'color:#2196F3;font-weight:bold', '');
         }
         mainAbortController = new AbortController();
 
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const activeTab = activeTabs[0];
         if (activeTab) {
+            console.debug('%c LatexToCalc [BG] › %cExecuting content script in tab %c' + activeTab.id, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
             chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
                 function: async () => {
-                    const textFromIframe = await getTextFromIframe(); // Accessing the function from content.js
-                    if (textFromIframe && textFromIframe.trim() !== "") {
-                        chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromIframe });
+                    const latexContent = await extractLatexContent(); // Renamed function from getTextFromIframe
+                    if (latexContent && latexContent.trim() !== "") {
+                        chrome.runtime.sendMessage({ type: "LATEX_EXTRACTED", latexContent: latexContent });
                     } else {
                         try {
                             const textFromClipboard = await navigator.clipboard.readText();
-                            chrome.runtime.sendMessage({ type: "GET_CLIPBOARD_TEXT", clipboardText: textFromClipboard });
+                            chrome.runtime.sendMessage({ type: "LATEX_EXTRACTED", latexContent: textFromClipboard });
                         } catch (error) {
-                            console.error('Error reading from clipboard:', error);
+                            console.error('%c LatexToCalc [BG] › %cError reading from clipboard: %c' + error, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
                             chrome.runtime.sendMessage({
-                                type: 'SHOW_POPUP',
+                                type: 'SHOW_ERROR_POPUP',
                                 message: 'Failed to read from clipboard. Please try again.'
                             });
                         }
@@ -151,36 +152,38 @@ chrome.commands.onCommand.addListener(async (command) => {
                 }
             });
         } else {
-            console.warn('No active tab found. Please click on a tab first.');
+            console.warn('%c LatexToCalc [BG] › %cNo active tab found', 'color:#2196F3;font-weight:bold', 'color:#FF9800');
         }
     }
 });
 
-// Listen for messages from the content script (clipboard or iframe text)
+// Listen for messages from the content script (latex content extracted)
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    if (request.type === "GET_CLIPBOARD_TEXT") {
-        const clipboardText = request.clipboardText;
-        timingBreakdown.textReceived = performance.now();
-        console.log("LaTeX:", clipboardText);
-
+    if (request.type === "LATEX_EXTRACTED") {
+        const latexContent = request.latexContent;
+        timingBreakdown.latexReceived = performance.now();
+        
+        // Print the original LaTeX before translation
+        console.log('%c LatexToCalc [BG] › %cSource LaTeX: %c' + latexContent, 'color:#2196F3;font-weight:bold', '', 'font-style:italic;color:#673AB7');
+        
         // Log whether this is the first request after extension load
         if (!connectionWarmedUp) {
-            console.debug("First translation request - server may need to initialize");
+            console.debug('%c LatexToCalc [BG] › %cFirst translation request - server may need to initialize', 'color:#2196F3;font-weight:bold', 'color:#FF9800');
         }
 
-        // Check if the clipboard text is the same as the last input or last output (cache check)
-        if (clipboardText === lastInputText || clipboardText === lastOutputText) {
-            console.log("Using cached translation.");
+        // Check if the latex content is the same as the last input or last output (cache check)
+        if (latexContent === lastInputLatex || latexContent === lastOutputCalcSyntax) {
+            console.log('%c LatexToCalc [BG] › %cUsing cached translation', 'color:#2196F3;font-weight:bold', '');
             // Use cached translation
             timingBreakdown.translationStart = performance.now();
             timingBreakdown.translationEnd = timingBreakdown.translationStart; // No actual translation
-            injectCopyTextToClipboard(lastOutputText, true); // Pass true to indicate timing should be measured
+            copyTranslationToClipboard(lastOutputCalcSyntax, true); // Pass true to indicate timing should be measured
 
             const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const activeTab = activeTabs[0];
             if (activeTab) {
                 // Send a message to the active tab to show the "Translated" popup
-                chrome.tabs.sendMessage(activeTab.id, { message: 'Translated' });
+                chrome.tabs.sendMessage(activeTab.id, { type: 'TRANSLATION_COMPLETED', totalTime: 0 });
             }
             return; // Skip translation since it's already cached
         }
@@ -193,6 +196,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         // First try the primary server with HTTPS
         try {
             const primaryAddress = "https://otso.veistera.com/translate";
+            console.debug('%c LatexToCalc [BG] › %cAttempting translation with primary server', 'color:#2196F3;font-weight:bold', '');
             
             const response = await fetchWithTimeout(primaryAddress, {
                 method: 'POST',
@@ -202,7 +206,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 },
                 mode: 'cors',
                 credentials: 'omit',
-                body: JSON.stringify({ expression: clipboardText, ...settings })
+                body: JSON.stringify({ expression: latexContent, ...settings })
             }, 5000, !connectionWarmedUp); // Pass the cold start flag to fetchWithTimeout
             
             // Mark connection as warmed up after first successful request
@@ -212,43 +216,40 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             const data = await response.json();
             
             timingBreakdown.translationEnd = performance.now();
-            injectCopyTextToClipboard(data.result, true); // Pass true to indicate timing should be measured
+            const calculatorSyntax = data.result;
+            
+            copyTranslationToClipboard(calculatorSyntax, true); // Pass true to indicate timing should be measured
             translationSuccessful = true;
-            lastInputText = clipboardText;
-            lastOutputText = data.result;
-            console.log(`Translated text: %c${data.result}`, "font-weight: bold");
+            lastInputLatex = latexContent;
+            lastOutputCalcSyntax = calculatorSyntax;
+            console.log('%c LatexToCalc [BG] › %cTranslated text: %c' + calculatorSyntax, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold;color:#009688');
             
-            // Don't call logTimingBreakdown here - it will be called after clipboard operation completes
-            
-            // More robust checks for Chrome API availability
-            if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query && chrome.tabs.sendMessage) {
-                try {
-                    const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-                    if (activeTabs && activeTabs.length > 0 && activeTabs[0]) {
-                        chrome.tabs.sendMessage(activeTabs[0].id, { message: 'Translated' });
-                    }
-                } catch (chromeError) {
-                    console.error('Error using Chrome API:', chromeError);
-                }
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const activeTab = activeTabs[0];
+            if (activeTab) {
+                chrome.tabs.sendMessage(activeTab.id, { 
+                    type: 'TRANSLATION_COMPLETED',
+                    totalTime: Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                });
             }
             return;
         } catch (primaryError) {
-            console.debug("Primary server failed, falling back to alternatives:", primaryError);
+            console.debug('%c LatexToCalc [BG] › %cPrimary server failed: %c' + primaryError, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
             // Continue with fallback servers if primary fails
         }
         
         // Fallback to trying all other combinations
-        const addresses = ["otso.veistera.com", "129.151.205.209"];
-        const schemes = ['https://', 'http://'];
-        const fetchTasks = [];
+        const serverAddresses = ["otso.veistera.com", "129.151.205.209"];
+        const protocols = ['https://', 'http://'];
+        const translationRequests = [];
 
-        for (const address of addresses) {
-            for (const scheme of schemes) {
+        for (const address of serverAddresses) {
+            for (const protocol of protocols) {
                 // Skip the primary server as we already tried it
-                if (scheme === 'https://' && address === "otso.veistera.com") continue;
+                if (protocol === 'https://' && address === "otso.veistera.com") continue;
                 
-                const fullAddress = `${scheme}${address}`;
-                const request = fetchWithTimeout(`${fullAddress}/translate`, {
+                const serverUrl = `${protocol}${address}`;
+                const request = fetchWithTimeout(`${serverUrl}/translate`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -256,45 +257,40 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     },
                     mode: 'cors',
                     credentials: 'omit',
-                    body: JSON.stringify({ expression: clipboardText, ...settings })
+                    body: JSON.stringify({ expression: latexContent, ...settings })
                 }, 5000).then(async (response) => {
-                    if (!response.ok) throw new Error(`Bad response from ${fullAddress}`);
+                    if (!response.ok) throw new Error(`Bad response from ${serverUrl}`);
                     const data = await response.json();
-                    return { translatedText: data.result, source: fullAddress };
+                    return { calculatorSyntax: data.result, source: serverUrl };
                 }).catch(error => {
-                    console.debug(`Error from ${fullAddress}: ${error.message}`);
+                    console.debug('%c LatexToCalc [BG] › %cError from %c' + serverUrl + ': %c' + error.message, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold', 'color:#F44336');
                     throw error;
                 });
 
-                fetchTasks.push(request);
+                translationRequests.push(request);
             }
         }
 
         try {
-            const { translatedText, source } = await Promise.any(fetchTasks);
+            const { calculatorSyntax, source } = await Promise.any(translationRequests);
             timingBreakdown.translationEnd = performance.now();
-            injectCopyTextToClipboard(translatedText, true);
+            copyTranslationToClipboard(calculatorSyntax, true);
             translationSuccessful = true;
-            lastInputText = clipboardText;
-            lastOutputText = translatedText;
-            console.debug(`Translation successful from fallback ${source}: ${translatedText}`);
+            lastInputLatex = latexContent;
+            lastOutputCalcSyntax = calculatorSyntax;
+            console.debug('%c LatexToCalc [BG] › %cTranslation successful from fallback %c' + source + ': %c' + calculatorSyntax, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold', 'font-style:italic;color:#009688');
             
-            // Again, don't call logTimingBreakdown here
-            
-            // More robust checks for Chrome API availability
-            if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query && chrome.tabs.sendMessage) {
-                try {
-                    const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-                    if (activeTabs && activeTabs.length > 0 && activeTabs[0]) {
-                        chrome.tabs.sendMessage(activeTabs[0].id, { message: 'Translated' });
-                    }
-                } catch (chromeError) {
-                    console.error('Error using Chrome API:', chromeError);
-                }
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const activeTab = activeTabs[0];
+            if (activeTab) {
+                chrome.tabs.sendMessage(activeTab.id, { 
+                    type: 'TRANSLATION_COMPLETED',
+                    totalTime: Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                });
             }
             return;
         } catch (error) {
-            console.debug('All translation attempts failed:', error);
+            console.debug('%c LatexToCalc [BG] › %cAll translation attempts failed: %c' + error, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
         }
 
         if (!translationSuccessful) {
@@ -303,11 +299,11 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             const activeTab = activeTabs[0];
 
             if (!hasInternet) {
-                console.error('No internet connection.');
-                showPopupInTab(activeTab.id, 'No internet connection. Please check your Wi-Fi.');
+                console.error('%c LatexToCalc [BG] › %cNo internet connection', 'color:#2196F3;font-weight:bold', 'color:#F44336');
+                showErrorPopupInTab(activeTab.id, 'No internet connection. Please check your Wi-Fi.');
             } else {
-                console.error('Failed to translate clipboard');
-                showPopupInTab(activeTab.id, 'Failed to translate clipboard, the server is down.');
+                console.error('%c LatexToCalc [BG] › %cFailed to translate latex', 'color:#2196F3;font-weight:bold', 'color:#F44336');
+                showErrorPopupInTab(activeTab.id, 'Failed to translate LaTeX, the server is down.');
             }
         }
     }
@@ -317,39 +313,40 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 function logTimingBreakdown() {
     // Only log if we have complete timing information
     if (!timingBreakdown.clipboardWritten) {
-        console.debug("Timing breakdown incomplete, waiting for clipboard operation to complete");
+        console.debug('%c LatexToCalc [BG] › %cTiming breakdown incomplete, waiting for clipboard operation', 'color:#2196F3;font-weight:bold', '');
         return;
     }
     
     const total = Math.round(timingBreakdown.clipboardWritten - timingBreakdown.keypress);
-    const textFetch = Math.round(timingBreakdown.textReceived - timingBreakdown.keypress);
+    const latexExtraction = Math.round(timingBreakdown.latexReceived - timingBreakdown.keypress);
     const translation = Math.round(timingBreakdown.translationEnd - timingBreakdown.translationStart);
     const clipboardWrite = Math.round(timingBreakdown.clipboardWritten - timingBreakdown.translationEnd);
     
     // Ensure all values are positive
-    if (total <= 0 || textFetch < 0 || translation < 0 || clipboardWrite < 0) {
-        console.warn("Invalid timing detected, skipping breakdown");
+    if (total <= 0 || latexExtraction < 0 || translation < 0 || clipboardWrite < 0) {
+        console.warn('%c LatexToCalc [BG] › %cInvalid timing detected, skipping breakdown', 'color:#2196F3;font-weight:bold', 'color:#FF9800');
         return;
     }
     
     // Calculate percentages
-    const textFetchPercent = Math.round(textFetch/total*100);
+    const latexExtractionPercent = Math.round(latexExtraction/total*100);
     const translationPercent = Math.round(translation/total*100);
     const clipboardWritePercent = Math.round(clipboardWrite/total*100);
     
     // Get color styles based on percentage contribution
-    const textFetchColor = getColorForPercentage(textFetchPercent);
+    const latexExtractionColor = getColorForPercentage(latexExtractionPercent);
     const translationColor = getColorForPercentage(translationPercent);
     const clipboardWriteColor = getColorForPercentage(clipboardWritePercent);
     
     // Log with colored millisecond values
     console.debug(
-        `⏱ Timing breakdown (total: ${total} ms):
-    - Text fetch:     %c${textFetch.toString().padStart(3)} ms%c (${textFetchPercent}%)
-    - Translation:    %c${translation.toString().padStart(3)} ms%c (${translationPercent}%)
-    - Clipboard:      %c${clipboardWrite.toString().padStart(3)} ms%c (${clipboardWritePercent}%)`,
+        `%c LatexToCalc [BG] › %c⏱ Timing breakdown (total: ${total} ms):
+    - LaTeX extraction: %c${latexExtraction.toString().padStart(3)} ms%c (${latexExtractionPercent}%)
+    - Translation:      %c${translation.toString().padStart(3)} ms%c (${translationPercent}%)
+    - Clipboard:        %c${clipboardWrite.toString().padStart(3)} ms%c (${clipboardWritePercent}%)`,
+        'color:#2196F3;font-weight:bold', '',
         // Style arguments for each %c placeholder
-        textFetchColor, "color: inherit",
+        latexExtractionColor, "color: inherit",
         translationColor, "color: inherit",
         clipboardWriteColor, "color: inherit"
     );
@@ -358,7 +355,7 @@ function logTimingBreakdown() {
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
         if (tabs.length > 0) {
             chrome.tabs.sendMessage(tabs[0].id, { 
-                message: 'Translated',
+                type: 'TRANSLATION_COMPLETED',
                 totalTime: total
             });
         }
@@ -383,14 +380,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Function to inject the clipboard copy operation into the active tab
-function injectCopyTextToClipboard(text, trackTiming = false) {
+function copyTranslationToClipboard(text, trackTiming = false) {
     // Query the active tab in the current window
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs.length === 0) {
-            console.error('No active tab found');
+            console.error('%c LatexToCalc [BG] › %cNo active tab found', 'color:#2196F3;font-weight:bold', 'color:#F44336');
             return;
         }
 
+        console.debug('%c LatexToCalc [BG] › %cCopying translation to clipboard', 'color:#2196F3;font-weight:bold', '');
         // Inject and execute the performClipboardCopy function in the active tab
         chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
@@ -398,9 +396,9 @@ function injectCopyTextToClipboard(text, trackTiming = false) {
             args: [text, trackTiming]
         }, (result) => {
             if (chrome.runtime.lastError) {
-                console.error('Error injecting script:', chrome.runtime.lastError);
+                console.error('%c LatexToCalc [BG] › %cError injecting script: %c' + chrome.runtime.lastError.message, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
             } else {
-                console.log('Copied to clipboard');
+                console.debug('%c LatexToCalc [BG] › %cCopied to clipboard', 'color:#2196F3;font-weight:bold', '');
                 
                 if (trackTiming && result && result[0] && result[0].result) {
                     // Only update timing data if we received a valid result
@@ -423,15 +421,13 @@ function performClipboardCopy(text, trackTiming) {
     const startTime = performance.now();
     return navigator.clipboard.writeText(text).then(() => {
         const endTime = performance.now();
-        console.log(`Text copied to clipboard`);
+        console.log('%c LatexToCalc [BG] › %cCopied to clipboard: %c' + text, 'color:#2196F3;font-weight:bold', '', 'font-style:italic;font-weight:bold');
         return trackTiming ? { written: true, time: endTime } : true;
     }).catch(err => {
-        console.error('Failed to copy text:', err);
+        console.error('%c LatexToCalc [BG] › %cFailed to copy text: %c' + err, 'color:#2196F3;font-weight:bold', '', 'color:#F44336');
         return false;
     });
 }
-
-// Example usage
 
 // Function to send fetch request with timeout
 async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
@@ -442,13 +438,15 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
     try {
         // Add cold emoji if this is a cold start
         const coldIndicator = isColdStart ? " ❄️" : "";
-        console.debug(`Starting fetch to ${url}${coldIndicator}`);
+        console.debug('%c LatexToCalc [BG] › %cStarting fetch to %c' + url + coldIndicator, 'color:#2196F3;font-weight:bold', '', 'font-style:italic');
         
         const response = await fetch(url, { ...options, signal: controller.signal });
         
         // Get the response body as text and parse it into JSON 
         const responseText = await response.text();
         const fetchEndTime = performance.now();
+        const fetchDuration = Math.round(fetchEndTime - fetchStartTime);
+        console.debug('%c LatexToCalc [BG] › %cFetch completed in %c' + fetchDuration + ' ms', 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
         
         // Create a new response with the parsed text
         return new Response(responseText, {
@@ -456,6 +454,10 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false) {
             status: response.status,
             statusText: response.statusText
         });
+    } catch (error) {
+        const fetchDuration = Math.round(performance.now() - fetchStartTime);
+        console.debug('%c LatexToCalc [BG] › %cFetch failed after %c' + fetchDuration + ' ms: %c' + error, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold', 'color:#F44336');
+        throw error;
     } finally {
         clearTimeout(timeoutId);
     }

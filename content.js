@@ -12,15 +12,15 @@
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.message === 'Translated') {
+    if (request.type === 'TRANSLATION_COMPLETED') {
         const totalTimeMs = request.totalTime;
         if (totalTimeMs) {
             console.log(`%c LatexToCalc › %cTranslation completed in ${totalTimeMs} ms`, 'color:#4CAF50;font-weight:bold', '');
         }
         showPopup('green', 'Translated and copied to clipboard.');
-    } else if (request.type === 'SHOW_POPUP') {
+    } else if (request.type === 'SHOW_ERROR_POPUP') {
         showPopup('red', request.message + ' Meanwhile, visit: ', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
-        console.warn('Error:', request.message);
+        console.warn('%c LatexToCalc › %cError: %c' + request.message, 'color:#4CAF50;font-weight:bold', '', 'color:#F44336');
     }
 });
 
@@ -301,7 +301,7 @@ const LatexFinder = {
 /**
  * Find LaTeX content in the document using various strategies
  */
-function findLatexAlt(doc, prioritizeTextSelection = true) {
+function findLatexContent(doc, prioritizeTextSelection = true) {
     let result;
     
     // First check if selected text is part of an equation
@@ -375,9 +375,10 @@ function findLatexAlt(doc, prioritizeTextSelection = true) {
 }
 
 /**
- * Main function to get LaTeX content from the page
+ * Main function to extract LaTeX content from the page
+ * Renamed from getTextFromIframe to better reflect its purpose
  */
-async function getTextFromIframe() {
+async function extractLatexContent() {
     try {
         // ----- Check iframe content -----
         const iframe = document.querySelector('iframe[title="Kaavaeditori"]');
@@ -386,7 +387,7 @@ async function getTextFromIframe() {
             const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
 
             // In iframes we don't prioritize text selection over equations
-            const result = findLatexAlt(iframeDoc, false); 
+            const result = findLatexContent(iframeDoc, false); 
             if (result) {
                 console.log('%c LatexToCalc › %cFound LaTeX from ' + result.source, 'color:#4CAF50;font-weight:bold', '');
                 return result.content;
@@ -394,7 +395,7 @@ async function getTextFromIframe() {
         }
 
         // ----- Check main document content -----
-        const mainResult = findLatexAlt(document, true);
+        const mainResult = findLatexContent(document, true);
         if (mainResult) {
             console.log('%c LatexToCalc › %cFound LaTeX from ' + mainResult.source, 'color:#4CAF50;font-weight:bold', '');
             return mainResult.content;
@@ -434,7 +435,7 @@ async function getTextFromIframe() {
         showPopup('red', 'No LaTeX found in iframe, selected text, or clipboard.', 'https://otsobear.pyscriptapps.com/latex-to-calc/');
         return '';
     } catch (error) {
-        console.error('%c LatexToCalc › %cError while fetching text:', 'color:#F44336;font-weight:bold', '', error);
+        console.error('%c LatexToCalc › %cError while extracting LaTeX:', 'color:#F44336;font-weight:bold', '', error);
         return '';
     }
 }

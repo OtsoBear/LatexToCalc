@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
+    console.debug('%c LatexToCalc [POPUP] › %cPopup initialized', 'color:#9C27B0;font-weight:bold', '');
+    
     // Default settings (used only if no saved settings exist)
     const defaultSettings = {
         TI_on: true,
@@ -12,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Add event listener for chrome://extensions/shortcuts button
     document.getElementById("open-shortcuts").addEventListener('click', function() {
+        console.debug('%c LatexToCalc [POPUP] › %cOpening keyboard shortcuts page', 'color:#9C27B0;font-weight:bold', '');
         chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
     });
 
@@ -19,9 +22,15 @@ document.addEventListener('DOMContentLoaded', function () {
     chrome.storage.sync.get("settings", function(data) {
         // Use the saved settings or fallback to defaults if none exist
         const settings = data.settings || defaultSettings;
-        console.log("Loaded settings:", settings);
+        console.log('%c LatexToCalc [POPUP] › %cSettings loaded from storage', 'color:#9C27B0;font-weight:bold', '');
+        console.debug('%c LatexToCalc [POPUP] › %cSettings details: %o', 'color:#9C27B0;font-weight:bold', '', settings);
         
         // Initialize checkboxes based on the loaded settings
+        initializeCheckboxes(settings);
+    });
+    
+    // Helper function to initialize checkboxes
+    function initializeCheckboxes(settings) {
         document.getElementById("TI_on").checked = settings.TI_on;
         document.getElementById("SC_on").checked = settings.SC_on;
         document.getElementById("constants_on").checked = settings.constants_on;
@@ -29,7 +38,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById("e_on").checked = settings.e_on;
         document.getElementById("i_on").checked = settings.i_on;
         document.getElementById("g_on").checked = settings.g_on;
-    });
+        
+        console.debug('%c LatexToCalc [POPUP] › %cCheckboxes initialized', 'color:#9C27B0;font-weight:bold', '');
+    }
 
     // Add event listeners to ensure mutual exclusivity between TI and SC
     // and to ensure one of them is always on
@@ -57,7 +68,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Listen for changes on other checkboxes
     document.querySelectorAll('input[type="checkbox"]:not(#TI_on):not(#SC_on)').forEach(function (checkbox) {
-        checkbox.addEventListener('change', updateSettings);
+        checkbox.addEventListener('change', function() {
+            console.debug('%c LatexToCalc [POPUP] › %cOption changed: %c' + this.id + ' = ' + this.checked, 'color:#9C27B0;font-weight:bold', '', 'font-weight:bold');
+            updateSettings();
+        });
     });
 
     // Function to update settings
@@ -74,10 +88,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Save settings to chrome.storage
         chrome.storage.sync.set({ settings: newSettings }, function() {
-            console.log("Settings saved:", newSettings);
+            console.debug('%c LatexToCalc [POPUP] › %cNew settings: %o', 'color:#9C27B0;font-weight:bold', '', newSettings);
         });
 
         // Send the updated settings to background.js
-        chrome.runtime.sendMessage({ type: 'UPDATE_SETTINGS', settings: newSettings });
+        chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', settings: newSettings });
+        console.debug('%c LatexToCalc [POPUP] › %cSettings sent to background script', 'color:#9C27B0;font-weight:bold', '');
     }
 });
