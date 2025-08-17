@@ -1,5 +1,8 @@
 //background.js
 
+// Import timing module
+importScripts('timing.js');
+
 // Initialize cachedSettings variable if it doesn't exist
 let cachedSettings = null;
 
@@ -37,28 +40,6 @@ getSettings().then(() => {
 // Create a global variable to hold the controller for the main operation
 let mainAbortController;
 let processStartTime;
-// Store timing data per request to avoid race conditions
-let requestTimings = new Map();
-// Default timing structure
-const createTimingBreakdown = () => ({
-    keypress: 0,
-    contentScriptStart: 0,
-    latexReceived: 0,
-    settingsLoadStart: 0,
-    settingsLoadEnd: 0,
-    jsonSerializeStart: 0,
-    jsonSerializeEnd: 0,
-    networkStart: 0,
-    networkEnd: 0,
-    parseStart: 0,
-    parseEnd: 0,
-    tabQueryStart: 0,
-    tabQueryEnd: 0,
-    clipboardPrepStart: 0,
-    clipboardPrepEnd: 0,
-    clipboardWriteStart: 0,
-    clipboardWritten: 0
-});
 // Global cache for the most recent input and translated output
 let lastInputLatex = '';
 let lastOutputCalcSyntax = '';
@@ -239,10 +220,8 @@ chrome.commands.onCommand.addListener(async (command) => {
         // Create a unique request ID to track this specific request
         const requestId = Date.now() + '_' + Math.random();
 
-        // Create fresh timing data for this request
-        const timingBreakdown = createTimingBreakdown();
-        timingBreakdown.keypress = performance.now();
-        requestTimings.set(requestId, timingBreakdown);
+        // Start timing for this request
+        timingTracker.startRequest(requestId);
 
         // Clean up old controller and create new one
         if (mainAbortController) {
@@ -255,7 +234,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const activeTab = activeTabs[0];
         if (activeTab) {
-            timingBreakdown.contentScriptStart = performance.now();
+            timingTracker.mark(requestId, 'contentScriptStart');
             console.debug('%c LatexToCalc [BG] › %cExecuting content script in tab %c' + activeTab.id, 'color:#2196F3;font-weight:bold', '', 'font-weight:bold');
             chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
@@ -289,8 +268,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.type === "LATEX_EXTRACTED") {
         const latexContent = request.latexContent;
         const requestId = request.requestId || 'default';
-        const timingBreakdown = requestTimings.get(requestId) || createTimingBreakdown();
-        timingBreakdown.latexReceived = performance.now();
+        timingTracker.mark(requestId, 'latexReceived');
         
         // Print the original LaTeX before translation (normal log)
         logToActiveTab(`Source LaTeX: ${latexContent}`, 'info');
@@ -304,8 +282,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (latexContent === lastInputLatex || latexContent === lastOutputCalcSyntax) {
             console.log('%c LatexToCalc [BG] › %cUsing cached translation', 'color:#2196F3;font-weight:bold', '');
             // Use cached translation
-            timingBreakdown.translationStart = performance.now();
-            timingBreakdown.translationEnd = timingBreakdown.translationStart; // No actual translation
+            timingTracker.mark(requestId, 'translationStart');
+            timingTracker.mark(requestId, 'translationEnd');
             copyTranslationToClipboard(lastOutputCalcSyntax, true, requestId); // Pass requestId for timing tracking
 
             const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -318,20 +296,20 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         }
 
         // Get the latest settings for each translation request
-        timingBreakdown.settingsLoadStart = performance.now();
+        timingTracker.mark(requestId, 'settingsLoadStart');
         const settings = await getSettings(); // Get fresh settings
-        timingBreakdown.settingsLoadEnd = performance.now();
+        timingTracker.mark(requestId, 'settingsLoadEnd');
         
         // Log active settings without showing load time
         logActiveSettings(settings);
         
         // JSON serialization timing
-        timingBreakdown.jsonSerializeStart = performance.now();
+        timingTracker.mark(requestId, 'jsonSerializeStart');
         const requestBody = JSON.stringify({ expression: latexContent, ...settings });
-        timingBreakdown.jsonSerializeEnd = performance.now();
+        timingTracker.mark(requestId, 'jsonSerializeEnd');
 
         // Start the translation after settings are loaded
-        timingBreakdown.translationStart = performance.now();
+        timingTracker.mark(requestId, 'translationStart');
         let translationSuccessful = false;
 
         // First try the primary server with HTTPS
@@ -356,13 +334,13 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             if (!response.ok) throw new Error(`Bad response from ${primaryAddress}`);
             const data = await response.json();
             
-            timingBreakdown.translationEnd = performance.now();
+            timingTracker.mark(requestId, 'translationEnd');
             const calculatorSyntax = data.result;
             
             // Get result and copy to clipboard - measure each step precisely
-            timingBreakdown.tabQueryStart = performance.now();
+            timingTracker.mark(requestId, 'tabQueryStart');
             const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            timingBreakdown.tabQueryEnd = performance.now();
+            timingTracker.mark(requestId, 'tabQueryEnd');
 
             copyTranslationToClipboard(calculatorSyntax, true, requestId); // Pass requestId for timing tracking
             translationSuccessful = true;
@@ -372,9 +350,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             
             const activeTab = activeTabs[0];
             if (activeTab) {
-                chrome.tabs.sendMessage(activeTab.id, { 
+                const timing = timingTracker.getTiming(requestId);
+                chrome.tabs.sendMessage(activeTab.id, {
                     type: 'TRANSLATION_COMPLETED',
-                    totalTime: round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                    totalTime: timingTracker.round(timing.translationEnd - timing.translationStart)
                 });
             }
             return;
@@ -418,7 +397,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
         try {
             const { calculatorSyntax, source } = await Promise.any(translationRequests);
-            timingBreakdown.translationEnd = performance.now();
+            timingTracker.mark(requestId, 'translationEnd');
             copyTranslationToClipboard(calculatorSyntax, true, requestId);
             translationSuccessful = true;
             lastInputLatex = latexContent;
@@ -428,9 +407,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const activeTab = activeTabs[0];
             if (activeTab) {
-                chrome.tabs.sendMessage(activeTab.id, { 
+                const timing = timingTracker.getTiming(requestId);
+                chrome.tabs.sendMessage(activeTab.id, {
                     type: 'TRANSLATION_COMPLETED',
-                    totalTime: round(timingBreakdown.translationEnd - timingBreakdown.translationStart)
+                    totalTime: timingTracker.round(timing.translationEnd - timing.translationStart)
                 });
             }
             return;
@@ -454,139 +434,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     }
 });
 
-// Simplify the timing formatting to consistently use 1 decimal place
-
-// Helper functions for formatting timing values - simplified to always use 1 decimal
-function round(value) {
-    return Math.round(value * 10) / 10;
-}
-
-function padStart(num) {
-    const str = num.toFixed(1);
-    return str.padStart(5, ' ');
-}
-
-function padPercent(num) {
-    const str = num.toFixed(1);
-    return str.padStart(4, ' ');
-}
-
-// Update the logTimingBreakdown function to use simplified formatting
-function logTimingBreakdown(requestId) {
-    const timingBreakdown = requestTimings.get(requestId);
-    if (!timingBreakdown) {
-        return; // No timing data for this request
-    }
-    
-    // Only log if we have complete timing information
-    if (!timingBreakdown.clipboardWritten) {
-        logToActiveTab('Timing breakdown incomplete, waiting for clipboard operation', 'verbose');
-        return;
-    }
-    
-    // Calculate durations with 1 decimal place
-    const total = round(timingBreakdown.clipboardWritten - timingBreakdown.keypress);
-    const extraction = round(timingBreakdown.latexReceived - timingBreakdown.keypress);
-    const settingsLoad = round(timingBreakdown.settingsLoadEnd - timingBreakdown.settingsLoadStart);
-    const jsonSerialize = round(timingBreakdown.jsonSerializeEnd - timingBreakdown.jsonSerializeStart);
-    const network = round(timingBreakdown.networkEnd - timingBreakdown.networkStart);
-    const parsing = round(timingBreakdown.parseEnd - timingBreakdown.parseStart);
-    const tabQuery = round(timingBreakdown.tabQueryEnd - timingBreakdown.tabQueryStart);
-    const clipboardPrep = round(timingBreakdown.clipboardPrepEnd - timingBreakdown.clipboardPrepStart);
-    const clipboardWrite = round(timingBreakdown.clipboardWritten - timingBreakdown.clipboardWriteStart);
-    
-    // Ensure all values are valid
-    if (total <= 0) {
-        logToActiveTab('Invalid timing detected, skipping breakdown', 'warn');
-        return;
-    }
-    
-    // Calculate percentages (1 decimal place)
-    const extractPercent = round((extraction/total)*100);
-    const settingsPercent = round((settingsLoad/total)*100);
-    const jsonPercent = round((jsonSerialize/total)*100);
-    const networkPercent = round((network/total)*100);
-    const parsePercent = round((parsing/total)*100);
-    const tabQueryPercent = round((tabQuery/total)*100);
-    const prepPercent = round((clipboardPrep/total)*100);
-    const writePercent = round((clipboardWrite/total)*100);
-    
-    // Get color styles based on percentage contribution
-    const extractColor = getColorForPercentage(extractPercent);
-    const settingsColor = getColorForPercentage(settingsPercent);
-    const jsonColor = getColorForPercentage(jsonPercent);
-    const networkColor = getColorForPercentage(networkPercent);
-    const parseColor = getColorForPercentage(parsePercent);
-    const tabQueryColor = getColorForPercentage(tabQueryPercent);
-    const prepColor = getColorForPercentage(prepPercent);
-    const writeColor = getColorForPercentage(writePercent);
-    
-    // Format for console output with colors - ensure proper line breaks with \n
-    const consoleMessage = `⏱ Timing breakdown (total: ${total.toFixed(1)} ms):\n` +
-        `    - LaTeX extraction: %c${padStart(extraction)} ms%c (${padPercent(extractPercent)}%)\n` +
-        `    - Settings load:    %c${padStart(settingsLoad)} ms%c (${padPercent(settingsPercent)}%)\n` +
-        `    - JSON serialize:   %c${padStart(jsonSerialize)} ms%c (${padPercent(jsonPercent)}%)\n` +
-        `    - Network request:  %c${padStart(network)} ms%c (${padPercent(networkPercent)}%)\n` +
-        `    - Response parsing: %c${padStart(parsing)} ms%c (${padPercent(parsePercent)}%)\n` +
-        `    - Tab query:        %c${padStart(tabQuery)} ms%c (${padPercent(tabQueryPercent)}%)\n` +
-        `    - Clipboard prep:   %c${padStart(clipboardPrep)} ms%c (${padPercent(prepPercent)}%)\n` +
-        `    - Clipboard write:  %c${padStart(clipboardWrite)} ms%c (${padPercent(writePercent)}%)`;
-    
-    // Create array of console style arguments
-    const consoleStyleArgs = [
-        extractColor, "color: inherit",
-        settingsColor, "color: inherit",
-        jsonColor, "color: inherit",
-        networkColor, "color: inherit",
-        parseColor, "color: inherit",
-        tabQueryColor, "color: inherit",
-        prepColor, "color: inherit",
-        writeColor, "color: inherit"
-    ];
-    
-    // Log to background console
-    console.debug(
-        `%c LatexToCalc [BG] › %c${consoleMessage}`,
-        'color:#2196F3;font-weight:bold', '',
-        ...consoleStyleArgs
-    );
-    
-    // Send to content script with styles - format differently for content script
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-        if (tabs.length > 0) {
-            // Send the full message with style args
-            chrome.tabs.sendMessage(tabs[0].id, { 
-                type: 'LOG_MESSAGE',
-                logType: 'verbose',
-                message: consoleMessage,
-                consoleArgs: consoleStyleArgs
-            });
-            
-            // Also send the total time for the popup display (use round() for consistent 1 decimal)
-            chrome.tabs.sendMessage(tabs[0].id, { 
-                type: 'TRANSLATION_COMPLETED',
-                totalTime: round(total)
-            });
-        }
-    });
-    
-    // Clean up timing data for this request
-    requestTimings.delete(requestId);
-    
-    // Clean up old entries (keep only last 10 requests)
-    if (requestTimings.size > 10) {
-        const entries = Array.from(requestTimings.entries());
-        entries.slice(0, entries.length - 10).forEach(([id]) => requestTimings.delete(id));
-    }
-}
-
-// Helper function to get color based on percentage
-function getColorForPercentage(percentage) {
-    // Linear color gradient from green to red based on percentage
-    // Convert percentage to a hue value (120° = green, 0° = red)
-    const hue = Math.max(0, 120 - (percentage * 1.2)); // Scaled to give a nice gradient
-    return `color: hsl(${hue}, 80%, 45%)`;
-}
+// Timing breakdown is now handled by timing.js module
 
 // Open instructions only on first install, not on updates or browser restarts
 chrome.runtime.onInstalled.addListener((details) => {
@@ -602,8 +450,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Update copyTranslationToClipboard to track more detailed clipboard timing
 function copyTranslationToClipboard(text, trackTiming = false, requestId = 'default') {
-    const timingBreakdown = requestTimings.get(requestId) || createTimingBreakdown();
-    timingBreakdown.clipboardPrepStart = performance.now();
+    timingTracker.mark(requestId, 'clipboardPrepStart');
     
     // Query the active tab in the current window
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -612,11 +459,11 @@ function copyTranslationToClipboard(text, trackTiming = false, requestId = 'defa
             return;
         }
         
-        timingBreakdown.clipboardPrepEnd = performance.now();
+        timingTracker.mark(requestId, 'clipboardPrepEnd');
         console.debug('%c LatexToCalc [BG] › %cCopying translation to clipboard', 'color:#2196F3;font-weight:bold', '');
         
         // Track the clipboard write operation start time
-        timingBreakdown.clipboardWriteStart = performance.now();
+        timingTracker.mark(requestId, 'clipboardWriteStart');
         
         // Inject and execute the performClipboardCopy function in the active tab
         chrome.scripting.executeScript({
@@ -635,15 +482,10 @@ function copyTranslationToClipboard(text, trackTiming = false, requestId = 'defa
                 console.debug('%c LatexToCalc [BG] › %cCopied to clipboard', 'color:#2196F3;font-weight:bold', '');
                 
                 if (trackTiming && result && result[0] && result[0].result) {
-                    // Only update timing data if we received a valid result
-                    const clipboardTime = performance.now();
-                    
-                    // Only set this if we haven't already logged the timing
-                    if (!timingBreakdown.clipboardWritten) {
-                        timingBreakdown.clipboardWritten = clipboardTime;
-                        // Now log the final breakdown after we have all the data
-                        logTimingBreakdown(requestId);
-                    }
+                    // Mark clipboard write completion
+                    timingTracker.mark(requestId, 'clipboardWritten');
+                    // Log the final timing breakdown
+                    timingTracker.logBreakdown(requestId, logToActiveTab);
                 } else if (result && result[0] && !result[0].result) {
                     // Clipboard write failed
                     chrome.tabs.sendMessage(tabs[0].id, {
@@ -677,28 +519,26 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false, requ
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     
-    // Get timing breakdown for this request
-    const timingBreakdown = requestTimings.get(requestId) || createTimingBreakdown();
-    
     try {
         // Add cold emoji if this is a cold start
         const coldIndicator = isColdStart ? " ❄️" : "";
         logToActiveTab(`Starting fetch to ${url}${coldIndicator}`, 'verbose');
         
         // Track actual network time with high precision
-        timingBreakdown.networkStart = performance.now();
+        timingTracker.mark(requestId, 'networkStart');
         const response = await fetch(url, { ...options, signal: controller.signal });
-        timingBreakdown.networkEnd = performance.now();
+        timingTracker.mark(requestId, 'networkEnd');
         
         // Track JSON parsing time with high precision
-        timingBreakdown.parseStart = performance.now();
+        timingTracker.mark(requestId, 'parseStart');
         const responseText = await response.text();
-        timingBreakdown.parseEnd = performance.now();
+        timingTracker.mark(requestId, 'parseEnd');
         
         const fetchEndTime = performance.now();
-        const fetchDuration = round(fetchEndTime - fetchStartTime);
-        const networkTime = round(timingBreakdown.networkEnd - timingBreakdown.networkStart);
-        const parseTime = round(timingBreakdown.parseEnd - timingBreakdown.parseStart);
+        const fetchDuration = timingTracker.round(fetchEndTime - fetchStartTime);
+        const timing = timingTracker.getTiming(requestId);
+        const networkTime = timingTracker.round(timing.networkEnd - timing.networkStart);
+        const parseTime = timingTracker.round(timing.parseEnd - timing.parseStart);
         
         // Simplified logging with 1 decimal place
         logToActiveTab(`Fetch completed in ${fetchDuration.toFixed(1)} ms (network: ${networkTime.toFixed(1)}ms, parse: ${parseTime.toFixed(1)}ms)`, 'success', true);
@@ -710,7 +550,7 @@ async function fetchWithTimeout(url, options, timeout, isColdStart = false, requ
             statusText: response.statusText
         });
     } catch (error) {
-        const fetchDuration = round(performance.now() - fetchStartTime);
+        const fetchDuration = timingTracker.round(performance.now() - fetchStartTime);
         logToActiveTab(`Fetch failed after ${fetchDuration.toFixed(1)} ms: ${error}`, 'error');
         throw error;
     } finally {
